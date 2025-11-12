@@ -1,12 +1,17 @@
 # Project workflow
 
-**1. Version Control (Git)**
-Each team member develops on their feature branch and merges through pull requests.
+## Git flow
 
-**2. Jupyter Workflow**
+![Git flow](../imgs/gitflow.png)
 
-Each subsystem can be developed and tested in its own notebook under /notebooks/.
-Only the final integrated notebook (Final_Report.ipynb) should be cleaned and used for submission.
+**Default branches:**
+- `computer-vision`: feature branch for extracting map features
+- `global-navigation`: feature branch for path planning
+- `local-navigation`: feature branch for obstacle avoidance
+- `motion-control`: feature branch for basic control algorithm
+- `pose-estimation`: feature branch for state estimation
+- `dev`: main development branch where features are merged and tested
+- `main`: when dev has reached a sufficient maturity, it is merged in main as a release
 
 ## Repository structure
 
@@ -31,3 +36,8 @@ Only the final integrated notebook (Final_Report.ipynb) should be cleaned and us
 ├── .gitignore 
 └── README.md                       # Main README (project overview)
 ```
+
+Each subsystem can be developed under /src/subsys_name and tested in its own notebook under /notebooks/.
+Only the final integrated notebook (Final_Report.ipynb) should be cleaned and used for submission.
+
+`utils` can be used for code that is common to different subsystems.
