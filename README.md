@@ -1,8 +1,8 @@
 # 🦾 Mobile Robotics Project
 
-**Course:** Basics of Mobile Robotics — Prof. Francesco Mondada
-**Institution:** EPFL
-**Semester:** Fall 2025
+**Course:** Basics of Mobile Robotics — Prof. Francesco Mondada <br>
+**Institution:** EPFL <br>
+**Semester:** Fall 2025 <br>
 
 ---
 
