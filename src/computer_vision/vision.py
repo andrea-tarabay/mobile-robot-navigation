@@ -29,8 +29,19 @@ def initialisation(frame):
 
         # pipeline simple
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (5,5), 0)
-        edges = cv2.Canny(blur, low, high)
+        #blur = cv2.GaussianBlur(gray, (5,5), 0)
+        #edges = cv2.Canny(blur, low, high)
+
+        # 2) Renforcer les contrastes
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        eq = clahe.apply(gray)
+
+        # 3) Lissage intelligent (préserve les bords)
+        smooth = cv2.bilateralFilter(eq, d=7, sigmaColor=50, sigmaSpace=50)
+
+        # 4) Canny avec sliders
+        edges = cv2.Canny(smooth, low, high)
+
 
         # contours
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -83,11 +94,25 @@ class Vision:
     def get_state(self, frame):
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (5,5), 0)
-        edges = cv2.Canny(blur, self.params["canny_low"], self.params["canny_high"])
+        #blur = cv2.GaussianBlur(gray, (5,5), 0)
+        #edges = cv2.Canny(blur, self.params["canny_low"], self.params["canny_high"])
 
-        cv2.imshow("1 - Gray", gray)
-        cv2.imshow("2 - Blur", blur)
+        # 2) Renforcer les contrastes
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        eq = clahe.apply(gray)
+
+        # 3) Lissage intelligent (préserve les bords)
+        smooth = cv2.bilateralFilter(eq, d=7, sigmaColor=50, sigmaSpace=50)
+
+        # 4) Canny avec sliders
+        edges = cv2.Canny(
+        smooth,
+        self.params["canny_low"],
+        self.params["canny_high"]
+)
+
+        #cv2.imshow("1 - Gray", gray)
+        ##cv2.imshow("2 - Blur", blur)
         cv2.imshow("3 - Canny", edges)
 
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -128,7 +153,7 @@ class Vision:
 # UTILISATION
 # ---------------------------------------------------------
 vision = Vision()
-img = vision.load("table3.jpg")
+img = vision.load("table2.jpg")
 
 vision.params = initialisation(img)
 
