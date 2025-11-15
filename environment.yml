@@ -1,0 +1,22 @@
+name: BOMR
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - matplotlib
+  - scikit-image
+  - scikit-learn
+  - opencv
+  - pytorch
+  - torchvision
+  - torchaudio
+  - jupyterlab
+  - ipywidgets
+  - pip
+  - pip:
+      - ultralytics
+      - filterpy
+      - tdmclient
