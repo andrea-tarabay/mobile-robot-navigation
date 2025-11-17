@@ -23,7 +23,7 @@ As we have seen, the state variable is the smallest possible subset of variables
 \end{equation}
 ```
 
-Where $\dot{\phi}_i$ is the motor speed, $r$ the wheel radius and $l$ the axle length.
+Where $\dot{\phi}_i$ is the motor speed, $r$ the wheel radius and $l$ the axle length (total distance between both wheels is $2l$).
 
 Hence, the complete state variable will be denoted as $\vec{x}(t) =
 \begin{pmatrix}
@@ -110,18 +110,32 @@ And we can use then to define the state-space equations:
                 \theta_{k-1} - t_s \cdot \omega_k\\
                 \frac{r\dot{\phi}_r}{2} + \frac{r\dot{\phi}_l}{2}\\
                 \frac{r\dot{\phi}_r}{2l}-\frac{r\dot{\phi}_l}{2l}
+            \end{pmatrix} =
+            \begin{pmatrix}
+                x_{k-1} + t_s \cdot v_k \cdot cos(\theta)\\ 
+                y_{k-1} + t_s \cdot v_k \cdot sin(\theta)\\
+                \theta_{k-1} - t_s \cdot \omega_k\\
+                \frac{\lambda}{2} (u_r + u_l)\\
+                \frac{\lambda}{2l} (u_r - u_l)
             \end{pmatrix} \quad \text{with} \quad \vec{u}_k =
                 \begin{pmatrix}
-                    \dot{\phi}_r \\
-                    \dot{\phi}_l
+                    u_r \\
+                    u_l
                 \end{pmatrix} \\
         \vec{z}_k &= \boldsymbol{h}(t_s, \vec{x}_{k}) =
             \begin{pmatrix}
                 x_k \\
                 y_k \\
                 \theta_k \\
-                v_k ??\\
-                \omega_k ??
+                u_{r_{measured}}\\
+                u_{l_{measured}}
+            \end{pmatrix} =
+            \begin{pmatrix}
+                x_k \\
+                y_k \\
+                \theta_k \\
+                \frac{1}{\lambda}(v_k + l\omega)\\
+                \frac{1}{\lambda}(v_k - l\omega)
             \end{pmatrix}
     \end{align*}
 \end{equation}
