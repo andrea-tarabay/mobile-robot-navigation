@@ -54,19 +54,19 @@ Where $\epsilon_t \sim N(0, R)$ is a multinormal modelling the uncertainty intro
     \begin{align*}
         G_k &= 
         \begin{pmatrix}
-            \frac{\partial g_1}{\partial x_{k-1}} & \frac{\partial g_1}{\partial y_{k-1}} & \frac{\partial g_1}{\partial \theta_{k-1}} & \frac{\partial g_1}{\partial v_{k-1}} & \frac{\partial g_1}{\partial \omega_{k-1}} & \frac{\partial g_1}{\partial u_{rk}} & \frac{\partial g_1}{\partial u_{lk}} \\
-            \frac{\partial g_2}{\partial x_{k-1}} & \frac{\partial g_2}{\partial y_{k-1}} & \frac{\partial g_2}{\partial \theta_{k-1}} & \frac{\partial g_2}{\partial v_{k-1}} & \frac{\partial g_2}{\partial \omega_{k-1}} & \frac{\partial g_2}{\partial u_{rk}} & \frac{\partial g_2}{\partial u_{lk}} \\
-            \frac{\partial g_3}{\partial x_{k-1}} & \frac{\partial g_3}{\partial y_{k-1}} & \frac{\partial g_3}{\partial \theta_{k-1}} & \frac{\partial g_3}{\partial v_{k-1}} & \frac{\partial g_3}{\partial \omega_{k-1}} & \frac{\partial g_3}{\partial u_{rk}} & \frac{\partial g_3}{\partial u_{lk}} \\
-            \frac{\partial g_4}{\partial x_{k-1}} & \frac{\partial g_4}{\partial y_{k-1}} & \frac{\partial g_4}{\partial \theta_{k-1}} & \frac{\partial g_4}{\partial v_{k-1}} & \frac{\partial g_4}{\partial \omega_{k-1}} & \frac{\partial g_4}{\partial u_{rk}} & \frac{\partial g_4}{\partial u_{lk}} \\
-            \frac{\partial g_5}{\partial x_{k-1}} & \frac{\partial g_5}{\partial y_{k-1}} & \frac{\partial g_5}{\partial \theta_{k-1}} & \frac{\partial g_5}{\partial v_{k-1}} & \frac{\partial g_5}{\partial \omega_{k-1}} & \frac{\partial g_5}{\partial u_{rk}} & \frac{\partial g_5}{\partial u_{lk}}
+            \frac{\partial g_1}{\partial x_{k-1}} & \frac{\partial g_1}{\partial y_{k-1}} & \frac{\partial g_1}{\partial \theta_{k-1}} & \frac{\partial g_1}{\partial v_{k-1}} & \frac{\partial g_1}{\partial \omega_{k-1}} \\
+            \frac{\partial g_2}{\partial x_{k-1}} & \frac{\partial g_2}{\partial y_{k-1}} & \frac{\partial g_2}{\partial \theta_{k-1}} & \frac{\partial g_2}{\partial v_{k-1}} & \frac{\partial g_2}{\partial \omega_{k-1}} \\
+            \frac{\partial g_3}{\partial x_{k-1}} & \frac{\partial g_3}{\partial y_{k-1}} & \frac{\partial g_3}{\partial \theta_{k-1}} & \frac{\partial g_3}{\partial v_{k-1}} & \frac{\partial g_3}{\partial \omega_{k-1}} \\
+            \frac{\partial g_4}{\partial x_{k-1}} & \frac{\partial g_4}{\partial y_{k-1}} & \frac{\partial g_4}{\partial \theta_{k-1}} & \frac{\partial g_4}{\partial v_{k-1}} & \frac{\partial g_4}{\partial \omega_{k-1}} \\
+            \frac{\partial g_5}{\partial x_{k-1}} & \frac{\partial g_5}{\partial y_{k-1}} & \frac{\partial g_5}{\partial \theta_{k-1}} & \frac{\partial g_5}{\partial v_{k-1}} & \frac{\partial g_5}{\partial \omega_{k-1}}
         \end{pmatrix} \\
         &=
         \begin{pmatrix}
-            1 & 0 & -t_sv_{k-1}sin(\theta_{k-1}) & t_scos(\theta_{k-1}) & 0 & 0 & 0 \\
-            0 & 1 & t_sv_{k-1}cos(\theta_{k-1}) & t_ssin(\theta_{k-1}) & 0 & 0 & 0 \\
-            0 & 0 & 1 & 0 & -t_s & 0 & 0 \\
-            0 & 0 & 0 & 0 & 0 & \frac{\lambda}{2} & \frac{\lambda}{2} \\
-            0 & 0 & 0 & 0 & 0 & \frac{\lambda}{2l} & -\frac{\lambda}{2l}
+            1 & 0 & -t_sv_{k-1}sin(\theta_{k-1}) & t_scos(\theta_{k-1}) & 0 \\
+            0 & 1 & t_sv_{k-1}cos(\theta_{k-1}) & t_ssin(\theta_{k-1}) & 0 \\
+            0 & 0 & 1 & 0 & -t_s \\
+            0 & 0 & 0 & 0 & 0 \\
+            0 & 0 & 0 & 0 & 0
         \end{pmatrix}
     \end{align*}
 \end{equation}
@@ -106,3 +106,12 @@ Where $\epsilon_t \sim N(0, R)$ is a multinormal modelling the uncertainty intro
     \end{align*}
 \end{equation}
 ```
+
+**TODO:**
+- Add the feature that there is two $H_k$ possible, one used when the cam is available and one to use when there is no info available from the cam
+
+- Compute $Q$ and $R$ based on the exercise 8, so maybe tweek it a bit to have the correct estimation of the covariance matrix. Use the assumption that 50% of error is due to measure and 50% due to the model or make a more complex assumption if there is an intuition to do so.
+
+- At each main iteration, just before motion control, call Kalman and use the $\mu$ for the control
+
+- OPTIONAL: Optimize the Kalman with 4/5 iterations only odometry and 1/5 with camera
