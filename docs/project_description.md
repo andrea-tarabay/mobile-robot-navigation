@@ -103,39 +103,39 @@ And we can use then to define the state-space equations:
                 v_{k}\\
                 \omega_{k}
             \end{pmatrix} 
-            = \boldsymbol{g}(t_s, \vec{x}_{k-1}, \vec{u}_k) = 
+            = \boldsymbol{g}(\vec{x}_{k-1}, \vec{u}_k) = 
             \begin{pmatrix}
-                x_{k-1} + t_s \cdot v_k \cdot cos(\theta)\\ 
-                y_{k-1} + t_s \cdot v_k \cdot sin(\theta)\\
-                \theta_{k-1} - t_s \cdot \omega_k\\
+                x_{k-1} + t_s \cdot v_{k-1} \cdot cos(\theta_{k-1})\\ 
+                y_{k-1} + t_s \cdot v_{k-1} \cdot sin(\theta_{k-1})\\
+                \theta_{k-1} - t_s \cdot \omega_{k-1}\\
                 \frac{r\dot{\phi}_r}{2} + \frac{r\dot{\phi}_l}{2}\\
                 \frac{r\dot{\phi}_r}{2l}-\frac{r\dot{\phi}_l}{2l}
             \end{pmatrix} =
             \begin{pmatrix}
-                x_{k-1} + t_s \cdot v_k \cdot cos(\theta)\\ 
-                y_{k-1} + t_s \cdot v_k \cdot sin(\theta)\\
-                \theta_{k-1} - t_s \cdot \omega_k\\
-                \frac{\lambda}{2} (u_r + u_l)\\
-                \frac{\lambda}{2l} (u_r - u_l)
+                x_{k-1} + t_s \cdot v_{k-1} \cdot cos(\theta_{k-1})\\ 
+                y_{k-1} + t_s \cdot v_{k-1} \cdot sin(\theta_{k-1})\\
+                \theta_{k-1} - t_s \cdot \omega_{k-1}\\
+                \frac{\lambda}{2} (u_{rk} + u_{lk})\\
+                \frac{\lambda}{2l} (u_{rk} - u_{lk})
             \end{pmatrix} \quad \text{with} \quad \vec{u}_k =
                 \begin{pmatrix}
-                    u_r \\
-                    u_l
+                    u_{rk} \\
+                    u_{lk}
                 \end{pmatrix} \\
-        \vec{z}_k &= \boldsymbol{h}(t_s, \vec{x}_{k}) =
+        \vec{z}_k &= 
+            \begin{pmatrix}
+                x_{k,measured} \\
+                y_{k,measured} \\
+                \theta_{k,measured} \\
+                u_{r,k,measured}\\
+                u_{l,k,measured}
+            \end{pmatrix} = \boldsymbol{h}(\vec{x}_{k}) =
             \begin{pmatrix}
                 x_k \\
                 y_k \\
                 \theta_k \\
-                u_{r_{measured}}\\
-                u_{l_{measured}}
-            \end{pmatrix} =
-            \begin{pmatrix}
-                x_k \\
-                y_k \\
-                \theta_k \\
-                \frac{1}{\lambda}(v_k + l\omega)\\
-                \frac{1}{\lambda}(v_k - l\omega)
+                \frac{1}{\lambda}(v_k + l\omega_k)\\
+                \frac{1}{\lambda}(v_k - l\omega_k)
             \end{pmatrix}
     \end{align*}
 \end{equation}
