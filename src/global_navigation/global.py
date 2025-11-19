@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from shapely.geometry import Polygon
 import pyvisgraph as vg
-import networkx as nx
+#import networkx as nx
 import math
 
 from computer_vision.vision import Vision, initialisation
@@ -56,7 +56,7 @@ def compute_visibility_path(inflated_obstacles, start, goal):
 if __name__ == "__main__":
     # Vision + image
     vision = Vision()
-    img = vision.load("table2.jpg")  
+    img = vision.load("table4.jpg")  
 
     vision.params = initialisation(img)
 
