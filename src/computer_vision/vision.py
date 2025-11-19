@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import os
 
 
 # ---------------------------------------------------------
@@ -78,6 +79,9 @@ def initialisation(frame):
 
 
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+IMG_PATH = os.path.join(BASE_DIR, "images")
+
 # ---------------------------------------------------------
 # VISION
 # ---------------------------------------------------------
@@ -85,10 +89,13 @@ class Vision:
     def __init__(self):
         pass
 
-    def load(self, path="table3.jpg"):
+    def load(self, filename):
+        path = os.path.join(IMG_PATH, filename)
         img = cv2.imread(path)
+
         if img is None:
             raise FileNotFoundError(f"Impossible de charger {path}")
+
         return img
 
     def get_state(self, frame):
@@ -102,7 +109,7 @@ class Vision:
         eq = clahe.apply(gray)
 
         # 3) Lissage intelligent (préserve les bords)
-        smooth = cv2.bilateralFilter(eq, d=7, sigmaColor=50, sigmaSpace=50)
+        smooth = cv2.bilateralFilter(eq, d=9, sigmaColor=50, sigmaSpace=50)
 
         # 4) Canny avec sliders
         edges = cv2.Canny(
@@ -152,8 +159,9 @@ class Vision:
 # ---------------------------------------------------------
 # UTILISATION
 # ---------------------------------------------------------
+
 vision = Vision()
-img = vision.load("table2.jpg")
+img = vision.load("table5.jpg")
 
 vision.params = initialisation(img)
 
