@@ -11,6 +11,8 @@ def hsv_mask_circular(hsv, hmin, hmax, smin=40, vmin=40):
     """
     Masque HSV en tenant compte du wrap 179 -> 0.
     hmin, hmax dans [0,179].
+    Args: hsv (image HSV uint8), hmin/hmax/smin/vmin seuils.
+    Return: masque binaire (uint8) où les pixels dans l'intervalle sont à 255.
     """
     if hmin <= hmax:
         lower = np.array([hmin, smin, vmin])
@@ -29,7 +31,11 @@ def hsv_mask_circular(hsv, hmin, hmax, smin=40, vmin=40):
 
 
 def circularity_of_contour(c):
-    """ 4πA / P² """
+    """
+    4πA / P² pour mesurer si un contour est rond.
+    Args: c contour opencv.
+    Return: score de circularité (0..1+).
+    """
     area = cv2.contourArea(c)
     peri = cv2.arcLength(c, True)
     if peri <= 1e-6:
@@ -42,6 +48,8 @@ def find_circle_candidates(mask, min_area, max_area, min_circularity=0.7):
     Retourne une liste de candidats ronds:
     [{"center":(x,y), "area":A, "circ":C, "contour":c}]
     On préfère être strict -> si circ trop faible ou aire hors range, rejet.
+    Args: mask binaire, aire min/max, circularité min.
+    Return: liste de dicts pour chaque bulle compatible.
     """
     cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     candidates = []
@@ -77,6 +85,8 @@ def robot_pair_ok(red, green, max_r_rel_diff=0.15, dist_factor=1.0):
     Conditions strictes:
     - rayons égaux ±15%
     - distance centres <= sqrt(min(area)) * dist_factor
+    Args: deux candidats ronds + paramètres de tolérance.
+    Return: bool, True si la paire semble être le robot.
     """
     if red is None or green is None:
         return False
@@ -114,6 +124,8 @@ def score_pair(red, green):
     - circularité haute
     - aires proches
     - distance raisonnable
+    Args: deux candidats ronds.
+    Return: float (score relatif pour choisir la meilleure paire).
     """
     Ar, Ag = red["area"], green["area"]
     rr = np.sqrt(Ar / np.pi)
@@ -137,6 +149,7 @@ def score_pair(red, green):
 
 class Vision:
     def __init__(self):
+        """Init: états, caches, filtres EMA et monitoring pour la pipeline vision."""
         self.color_params = None   # HSV thresholds + aires
         self.canny_params = None   # Canny thresholds + aires
 
@@ -180,6 +193,7 @@ class Vision:
         self.default_params_path = os.path.join(BASE, "vision_params.json")
 
     def load(self, filename):
+        """Charge une image depuis le dossier images interne. Args: filename (str). Return: image BGR."""
         path = os.path.join(self.IMGS, filename)
         img = cv2.imread(path)
         if img is None:
@@ -193,6 +207,8 @@ class Vision:
         """
         J'enregistre les params calibrés pour éviter de refaire les trackbars.
         - filepath None -> self.default_params_path
+        Args: filepath str ou None.
+        Return: None (écrit un JSON color_params/canny_params).
         """
         if self.color_params is None or self.canny_params is None:
             raise RuntimeError("Params incomplets : init_colors/init_canny d'abord.")
@@ -212,6 +228,8 @@ class Vision:
         """
         Recharge les seuils HSV + Canny depuis un fichier JSON.
         Je supporte les deux clés 'color_params' et 'canny_params'.
+        Args: filepath str ou None.
+        Return: dict chargé (et met à jour self.color_params/canny_params).
         """
         if filepath is None:
             filepath = self.default_params_path
@@ -238,6 +256,8 @@ class Vision:
         respectant TES conditions.
         Si aucune paire valide -> found=False (préférence faux négatif).
         log_stats=False si je veux juste un masque (ex: remove_robot) sans suivre les stats.
+        Args: frame BGR, log_stats (bool).
+        Return: self.robot_state dict avec centres bruts/lissés, theta, aires, masque.
         """
         if self.color_params is None:
             self.robot_state.update({
@@ -345,6 +365,8 @@ class Vision:
         Petit filtre exponentiel maison pour lisser la pose et éviter les jumps.
         - centre lissé en (x,y) float
         - theta lissé via sin/cos pour respecter le wrap 2π
+        Args: center (tuple x,y) ou None, theta (float rad) ou None.
+        Return: (center_lissé int,int ou None, theta_lissé float ou None).
         """
         if center is None or theta is None:
             # si je perds le robot je repars de zéro (sinon on traîne un vieux état)
@@ -381,6 +403,8 @@ class Vision:
         """
         Je cumule les frames ratées pour savoir si la détection est trop bruyante.
         Si le ratio > warn_threshold, j'affiche un warning console pour recalibrer.
+        Args: found (bool) indique si la frame courante a détecté.
+        Return: ratio courant de frames ratées.
         """
         stats = self.not_found_stats
         stats["frames"] += 1
@@ -401,7 +425,7 @@ class Vision:
         return ratio
 
     def reset_monitoring(self):
-        """Je repars de zéro pour les stats de non-détection (utile avant un nouveau run)."""
+        """Je repars de zéro pour les stats de non-détection (utile avant un nouveau run). Return: None."""
         self.not_found_stats.update({
             "frames": 0,
             "miss": 0,
@@ -413,6 +437,7 @@ class Vision:
     #  INITIALISATION COULEUR (ROBOT)
     # =======================================
     def init_colors(self, frame):
+        """Trackbars pour calibrer HSV. Args: frame BGR (image fixe). Return: None (stocke self.color_params)."""
         cv2.namedWindow("COLOR INIT")
 
         R_hmin, R_hmax = 170, 10
@@ -509,6 +534,8 @@ class Vision:
         1) détecte robot STRICT
         2) inpaint sur un masque dilaté
         => robot invisible pour Canny.
+        Args: frame BGR.
+        Return: (image nettoyée, masque robot) ; si pas trouvé -> (frame copy, None).
         
         Si self.debug_remove_robot == 1 :
             affiche l'image nettoyée (pour la documentation)
@@ -539,6 +566,7 @@ class Vision:
     #  PREPROCESS COMMUN CANNY
     # =======================================
     def _preprocess_for_canny(self, frame):
+        """Prépare l'image pour Canny (robot supprimé, CLAHE, bilateral). Args: frame BGR. Return: (clean, smooth, robot_mask)."""
         clean, robot_mask = self.remove_robot(frame)
 
         gray = cv2.cvtColor(clean, cv2.COLOR_BGR2GRAY)
@@ -553,6 +581,7 @@ class Vision:
     #  INITIALISATION CANNY (identique final)
     # =======================================
     def init_canny(self, frame):
+        """Trackbars pour calibrer Canny/areas. Args: frame BGR (image fixe). Return: None (stocke self.canny_params)."""
         cv2.namedWindow("CANNY INIT")
 
         low, high = 70, 120
@@ -605,6 +634,8 @@ class Vision:
         """
         Pipeline complet Canny + contours, sans caching.
         Je factorise pour réutiliser en init, freeze et calcul live.
+        Args: frame BGR.
+        Return: liste de polygones (list[list[(x,y)]]).
         """
         _clean, smooth, robot_mask = self._preprocess_for_canny(frame)
 
@@ -643,6 +674,8 @@ class Vision:
         J'extrais la map une fois (image fixe de la webcam au setup).
         Ensuite self.use_static_map permet de ne plus recalculer les polygones
         à chaque frame live.
+        Args: frame BGR (image de référence).
+        Return: polygones détectés (list de listes de points).
         """
         if self.canny_params is None:
             raise RuntimeError("Canny non initialisé : appelle init_canny() d'abord.")
@@ -653,7 +686,7 @@ class Vision:
         return polys
 
     def clear_static_map(self):
-        """Je repasse en mode recalcul temps réel (utile si la map change)."""
+        """Je repasse en mode recalcul temps réel (utile si la map change). Return: None."""
         self.static_map_polys = None
         self.use_static_map = False
 
@@ -661,6 +694,11 @@ class Vision:
     #  DÉTECTION POLYGONES FINAL (cache map statique)
     # =======================================
     def process(self, frame):
+        """
+        Détection de polygones obstacles avec cache statique.
+        Args: frame BGR.
+        Return: liste de polygones (list de points).
+        """
         if self.canny_params is None:
             raise RuntimeError("Canny non initialisé : appelle init_canny() d'abord.")
 
@@ -691,6 +729,8 @@ class Vision:
             - 'p' : relance les trackbars pour recalibrer + sauvegarde des params
             - 'q' ou ESC : quitte proprement
         warn_ratio: ratio de frames ratées qui déclenche le warning console (None => seuil actuel)
+        Args: cam_index (int), params_path (str JSON), warn_ratio (float).
+        Return: None (boucle jusqu'à sortie).
         """
         if params_path is None:
             params_path = self.default_params_path
@@ -813,6 +853,8 @@ class Vision:
         """
         Retourne (found, center(x,y), theta_rad).
         Utilise detect_robot().
+        Args: frame BGR.
+        Return: tuple (found, center, theta).
         """
         st = self.detect_robot(frame)
         return st["found"], st["center"], st["theta"]
