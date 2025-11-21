@@ -1,5 +1,4 @@
 import cv2
-import json
 import numpy as np
 import os
 
@@ -140,10 +139,6 @@ class Vision:
         self.color_params = None   # HSV thresholds + aires
         self.canny_params = None   # Canny thresholds + aires
 
-        # carte statique (obstacles) que je veux garder dès que le setup est figé
-        self.use_static_map = False
-        self.static_map_polys = None
-
         self.robot_state = {
             "found": False,
             "center": None,
@@ -152,32 +147,13 @@ class Vision:
             "theta": None,
             "red_area": 0.0,
             "green_area": 0.0,
-            "robot_mask": None,  # masque final du robot (uint8)
-            # filtres EMA pour lisser avant le Kalman / local path
-            "smooth_center": None,
-            "smooth_theta": None
+            "robot_mask": None  # masque final du robot (uint8)
         }
-        #self.debug_remove_robot = 0
-        self.debug_remove_robot = 1 # je laisse 1 quand je veux voir l'inpaint en live
-
-        # filtre exponentiel pour lisser centre + orientation (je garde léger)
-        self.pose_filter_alpha = 0.35
-        self.pose_filtered = {"center": None, "theta": None}
-
-        # stats basiques pour monitorer les frames perdues
-        self.not_found_stats = {
-            "frames": 0,
-            "miss": 0,
-            "warn_threshold": 0.25,   # 25% de frames manquées -> alerte
-            "warn_min_frames": 30,    # j'attends un peu avant de spam un warning
-            "last_warned_ratio": 0.0,
-            "last_ratio": 0.0
-        }
+        #self.debug_remove_robot = 0   
+        self.debug_remove_robot = 1 # pour debug robot removal
 
         BASE = os.path.dirname(os.path.abspath(__file__))
         self.IMGS = os.path.join(BASE, "images")
-        # je garde un emplacement par défaut pour stocker les params calibrés
-        self.default_params_path = os.path.join(BASE, "vision_params.json")
 
     def load(self, filename):
         path = os.path.join(self.IMGS, filename)
@@ -187,71 +163,21 @@ class Vision:
         return img
 
     # =======================================
-    #  PERSISTENCE DES PARAMETRES (HSV + CANNY)
-    # =======================================
-    def save_params(self, filepath=None):
-        """
-        J'enregistre les params calibrés pour éviter de refaire les trackbars.
-        - filepath None -> self.default_params_path
-        """
-        if self.color_params is None or self.canny_params is None:
-            raise RuntimeError("Params incomplets : init_colors/init_canny d'abord.")
-
-        if filepath is None:
-            filepath = self.default_params_path
-
-        blob = {
-            "color_params": self.color_params,
-            "canny_params": self.canny_params
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(blob, f, indent=2)
-        print(f"[INFO] Params vision sauvegardés dans {filepath}")
-
-    def load_params(self, filepath=None):
-        """
-        Recharge les seuils HSV + Canny depuis un fichier JSON.
-        Je supporte les deux clés 'color_params' et 'canny_params'.
-        """
-        if filepath is None:
-            filepath = self.default_params_path
-
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        # tolérant sur les clés pour ne pas bloquer si le JSON est simple
-        self.color_params = data.get("color_params") or data.get("color")
-        self.canny_params = data.get("canny_params") or data.get("canny")
-
-        if self.color_params is None or self.canny_params is None:
-            raise ValueError(f"Fichier {filepath} ne contient pas color_params/canny_params")
-
-        print(f"[INFO] Params vision chargés depuis {filepath}")
-        return data
-
-    # =======================================
     #  DETECTION ROBOT (STRICTE, OPTIMALE)
     # =======================================
-    def detect_robot(self, frame, log_stats=True):
+    def detect_robot(self, frame):
         """
         Détecte toutes les bulles rouges/vertes, cherche la meilleure paire
         respectant TES conditions.
         Si aucune paire valide -> found=False (préférence faux négatif).
-        log_stats=False si je veux juste un masque (ex: remove_robot) sans suivre les stats.
         """
         if self.color_params is None:
             self.robot_state.update({
                 "found": False, "center": None,
                 "red_center": None, "green_center": None,
                 "theta": None, "red_area": 0.0, "green_area": 0.0,
-                "robot_mask": None,
-                "smooth_center": None,
-                "smooth_theta": None
+                "robot_mask": None
             })
-            # je reset aussi le filtre EMA et j'update les stats de non-détection
-            self._apply_pose_ema(None, None)
-            if log_stats:
-                self._update_not_found_stats(False)
             return self.robot_state
 
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -287,14 +213,8 @@ class Vision:
                 "found": False, "center": None,
                 "red_center": None, "green_center": None,
                 "theta": None, "red_area": 0.0, "green_area": 0.0,
-                "robot_mask": None,
-                "smooth_center": None,
-                "smooth_theta": None
+                "robot_mask": None
             })
-            # je note la frame manquée pour le monitoring
-            self._apply_pose_ema(None, None)
-            if log_stats:
-                self._update_not_found_stats(False)
             return self.robot_state
 
         red, green = best_pair
@@ -309,7 +229,7 @@ class Vision:
         dx = green_center[0] - red_center[0]
         dy = green_center[1] - red_center[1]
         theta = float(np.arctan2(dy, dx) - np.pi/2 )  # orientation robot
-        #print("Theta (deg):", np.degrees(theta))
+        print("Theta (deg):", np.degrees(theta))
 
         # masque robot = union des 2 contours, dilaté
         robot_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
@@ -320,9 +240,6 @@ class Vision:
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
         robot_mask = cv2.dilate(robot_mask, k, iterations=1)
 
-        # lissage EMA pour stabiliser avant d'envoyer au Kalman
-        smooth_center, smooth_theta = self._apply_pose_ema(center, theta)
-
         self.robot_state.update({
             "found": True,
             "center": center,
@@ -331,83 +248,9 @@ class Vision:
             "theta": theta,
             "red_area": red["area"],
             "green_area": green["area"],
-            "robot_mask": robot_mask,
-            "smooth_center": smooth_center,
-            "smooth_theta": smooth_theta
+            "robot_mask": robot_mask
         })
-        # j'update les stats uniquement quand le robot est trouvé
-        if log_stats:
-            self._update_not_found_stats(True)
         return self.robot_state
-
-    def _apply_pose_ema(self, center, theta):
-        """
-        Petit filtre exponentiel maison pour lisser la pose et éviter les jumps.
-        - centre lissé en (x,y) float
-        - theta lissé via sin/cos pour respecter le wrap 2π
-        """
-        if center is None or theta is None:
-            # si je perds le robot je repars de zéro (sinon on traîne un vieux état)
-            self.pose_filtered = {"center": None, "theta": None}
-            return None, None
-
-        alpha = float(self.pose_filter_alpha)
-        cx, cy = float(center[0]), float(center[1])
-
-        if self.pose_filtered["center"] is None:
-            # première détection -> pas de lissage
-            filt_center = (cx, cy)
-            filt_theta = float(theta)
-        else:
-            px, py = self.pose_filtered["center"]
-            filt_center = (
-                (1.0 - alpha) * px + alpha * cx,
-                (1.0 - alpha) * py + alpha * cy
-            )
-            # je lisse l'angle en combinant sin/cos (évite les sauts autour de pi/-pi)
-            prev_theta = self.pose_filtered["theta"]
-            filt_theta = np.arctan2(
-                (1.0 - alpha) * np.sin(prev_theta) + alpha * np.sin(theta),
-                (1.0 - alpha) * np.cos(prev_theta) + alpha * np.cos(theta)
-            )
-
-        self.pose_filtered["center"] = filt_center
-        self.pose_filtered["theta"] = filt_theta
-
-        # je renvoie un centre arrondi (int) pour le dessin + theta float pour le planner
-        return (int(filt_center[0]), int(filt_center[1])), float(filt_theta)
-
-    def _update_not_found_stats(self, found):
-        """
-        Je cumule les frames ratées pour savoir si la détection est trop bruyante.
-        Si le ratio > warn_threshold, j'affiche un warning console pour recalibrer.
-        """
-        stats = self.not_found_stats
-        stats["frames"] += 1
-        if not found:
-            stats["miss"] += 1
-
-        ratio = stats["miss"] / max(1, stats["frames"])
-        stats["last_ratio"] = ratio
-
-        # évite de spammer : je n'alerte que si le ratio dépasse le seuil de manière nouvelle
-        if (stats["frames"] >= stats["warn_min_frames"]
-                and ratio > stats["warn_threshold"]
-                and ratio - stats["last_warned_ratio"] > 0.02):
-            print(f"[WARN] Robot non trouvé sur {ratio*100:.1f}% des frames "
-                  f"(>{stats['warn_threshold']*100:.0f}%). Recalibre HSV/Canny ou ajuste l'éclairage.")
-            stats["last_warned_ratio"] = ratio
-
-        return ratio
-
-    def reset_monitoring(self):
-        """Je repars de zéro pour les stats de non-détection (utile avant un nouveau run)."""
-        self.not_found_stats.update({
-            "frames": 0,
-            "miss": 0,
-            "last_ratio": 0.0,
-            "last_warned_ratio": 0.0
-        })
 
     # =======================================
     #  INITIALISATION COULEUR (ROBOT)
@@ -417,9 +260,8 @@ class Vision:
 
         R_hmin, R_hmax = 170, 10
         G_hmin, G_hmax = 40, 90
-        minA, maxA = 50, 2000   # je reste large pour attraper le robot même s'il s'éloigne
+        minA, maxA = 50, 2000
 
-        # trackbars = mon outil manuel pour caler les seuils HSV
         cv2.createTrackbar("Red Hmin",   "COLOR INIT", R_hmin, 179, lambda x: None)
         cv2.createTrackbar("Red Hmax",   "COLOR INIT", R_hmax, 179, lambda x: None)
         cv2.createTrackbar("Green Hmin", "COLOR INIT", G_hmin, 179, lambda x: None)
@@ -441,8 +283,7 @@ class Vision:
                 "min_area": minA, "max_area": maxA
             }
 
-            # ici je ne veux pas polluer les stats de monitoring
-            state = self.detect_robot(frame, log_stats=False)
+            state = self.detect_robot(frame)
 
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             mask_red = hsv_mask_circular(hsv, R_hmin, R_hmax)
@@ -513,7 +354,7 @@ class Vision:
         Si self.debug_remove_robot == 1 :
             affiche l'image nettoyée (pour la documentation)
         """
-        state = self.detect_robot(frame, log_stats=False)
+        state = self.detect_robot(frame)
         if not state["found"] or state["robot_mask"] is None:
             cleaned = frame.copy()
 
@@ -526,7 +367,7 @@ class Vision:
 
         mask = state["robot_mask"]
 
-        # inpaint pour virer complètement le robot avant Canny
+        # inpaint
         removed = cv2.inpaint(frame, mask, inpaintRadius=7, flags=cv2.INPAINT_TELEA)
 
         # --- DEBUG OPTIONNEL ---
@@ -543,9 +384,9 @@ class Vision:
 
         gray = cv2.cvtColor(clean, cv2.COLOR_BGR2GRAY)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        eq = clahe.apply(gray)  # j'augmente le contraste local pour mieux choper les edges
+        eq = clahe.apply(gray)
 
-        # même filtre partout, le bilateral garde les edges tout en virant le bruit
+        # même filtre partout
         smooth = cv2.bilateralFilter(eq, d=9, sigmaColor=50, sigmaSpace=50)
         return clean, smooth, robot_mask
 
@@ -555,7 +396,7 @@ class Vision:
     def init_canny(self, frame):
         cv2.namedWindow("CANNY INIT")
 
-        low, high = 70, 120
+        low, high = 30, 120
         minA, maxA = 300, 20000
 
         cv2.createTrackbar("Canny Low",  "CANNY INIT", low, 255, lambda x: None)
@@ -573,7 +414,7 @@ class Vision:
 
             edges = cv2.Canny(smooth, low, high)
 
-            # affichage basé sur l'image CANNNY (je vois vite si je coupe trop/peu)
+            # affichage basé sur l'image CANNNY (comme tu veux)
             debug = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
 
             contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -599,14 +440,13 @@ class Vision:
         }
 
     # =======================================
-    #  EXTRACTION POLYGONES COMMUNE
+    #  DÉTECTION POLYGONES FINAL
     # =======================================
-    def _extract_polygons(self, frame):
-        """
-        Pipeline complet Canny + contours, sans caching.
-        Je factorise pour réutiliser en init, freeze et calcul live.
-        """
-        _clean, smooth, robot_mask = self._preprocess_for_canny(frame)
+    def process(self, frame):
+        if self.canny_params is None:
+            raise RuntimeError("Canny non initialisé : appelle init_canny() d'abord.")
+
+        clean, smooth, robot_mask = self._preprocess_for_canny(frame)
 
         edges = cv2.Canny(
             smooth,
@@ -638,174 +478,6 @@ class Vision:
 
         return polys
 
-    def freeze_map_from_frame(self, frame):
-        """
-        J'extrais la map une fois (image fixe de la webcam au setup).
-        Ensuite self.use_static_map permet de ne plus recalculer les polygones
-        à chaque frame live.
-        """
-        if self.canny_params is None:
-            raise RuntimeError("Canny non initialisé : appelle init_canny() d'abord.")
-
-        polys = self._extract_polygons(frame)
-        self.static_map_polys = list(polys)
-        self.use_static_map = True
-        return polys
-
-    def clear_static_map(self):
-        """Je repasse en mode recalcul temps réel (utile si la map change)."""
-        self.static_map_polys = None
-        self.use_static_map = False
-
-    # =======================================
-    #  DÉTECTION POLYGONES FINAL (cache map statique)
-    # =======================================
-    def process(self, frame):
-        if self.canny_params is None:
-            raise RuntimeError("Canny non initialisé : appelle init_canny() d'abord.")
-
-        # si j'ai figé la map à l'init, je la renvoie telle quelle
-        if self.use_static_map and self.static_map_polys is not None:
-            return list(self.static_map_polys)
-
-        # sinon calcul normal sur l'image courante
-        polys = self._extract_polygons(frame)
-
-        # si le mode statique est activé mais pas encore peuplé, je le remplis
-        if self.use_static_map:
-            self.static_map_polys = list(polys)
-
-        return polys
-
-    # =======================================
-    #  PIPELINE WEBCAM LIVE
-    # =======================================
-    def run_webcam(self, cam_index=0, params_path=None, warn_ratio=None):
-        """
-        Pipeline complet webcam que je veux utiliser pendant les tests:
-        1) grab 1 frame -> init (ou chargement) des params HSV/Canny
-        2) freeze_map_from_frame(frame_init) pour séparer obstacles/robot
-        3) boucle: detect_robot(frame_live) + affichage, sans recalcul map
-        Touches utiles:
-            - 'r' : refreeze la map si la scène a bougé (clear_static_map + freeze)
-            - 'p' : relance les trackbars pour recalibrer + sauvegarde des params
-            - 'q' ou ESC : quitte proprement
-        warn_ratio: ratio de frames ratées qui déclenche le warning console (None => seuil actuel)
-        """
-        if params_path is None:
-            params_path = self.default_params_path
-
-        if warn_ratio is not None:
-            # je peux ajuster le seuil d'alerte sans toucher au reste du code
-            self.not_found_stats["warn_threshold"] = float(warn_ratio)
-
-        self.reset_monitoring()
-
-        cap = cv2.VideoCapture(cam_index)
-        if not cap.isOpened():
-            raise RuntimeError(f"Impossible d'ouvrir la webcam index={cam_index}")
-
-        ret, frame_init = cap.read()
-        if not ret:
-            cap.release()
-            raise RuntimeError("Impossible de lire la première frame webcam.")
-
-        # ==== CHARGEMENT / INITIALISATION DES PARAMS ====
-        try:
-            if params_path and os.path.exists(params_path):
-                print(f"[INFO] Chargement des params depuis {params_path}")
-                self.load_params(params_path)
-            else:
-                print("[INFO] Pas de params préexistants -> trackbars init")
-                self.init_colors(frame_init)
-                self.init_canny(frame_init)
-                if params_path:
-                    self.save_params(params_path)
-        except Exception as e:
-            # si le JSON est corrompu je relance une init propre
-            print(f"[WARN] Chargement params échoué ({e}), je relance une init trackbars.")
-            self.init_colors(frame_init)
-            self.init_canny(frame_init)
-            if params_path:
-                self.save_params(params_path)
-
-        # ==== MAP FIGEE ====
-        self.freeze_map_from_frame(frame_init)
-        print("[INFO] Map figée (polygones obstacles) à partir de la frame d'init.")
-
-        # ==== BOUCLE LIVE ====
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("[WARN] Frame webcam manquante, arrêt boucle.")
-                break
-
-            # process() renvoie directement la map figée si elle existe
-            polys = self.process(frame)
-            robot = self.detect_robot(frame)
-
-            view = frame.copy()
-
-            # affichage des obstacles (verts) pour debug path planning
-            for poly in polys:
-                pts = np.array(poly, dtype=np.int32)
-                cv2.polylines(view, [pts], True, (0, 255, 0), 2)
-
-            # overlay du robot + version lissée pour montrer la stabilité
-            if robot["found"]:
-                cx, cy = robot["center"]
-                cv2.circle(view, (cx, cy), 6, (255, 255, 255), -1)
-                th = robot["theta"]
-                x2 = int(cx + 60*np.cos(th))
-                y2 = int(cy + 60*np.sin(th))
-                cv2.arrowedLine(view, (cx, cy), (x2, y2), (0, 0, 255), 3, tipLength=0.3)
-
-                # en jaune : la version lissée (celle que je veux pousser au planner)
-                if robot["smooth_center"] is not None:
-                    scx, scy = robot["smooth_center"]
-                    cv2.circle(view, (scx, scy), 6, (0, 255, 255), 2)
-                    sth = robot["smooth_theta"]
-                    sx2 = int(scx + 70*np.cos(sth))
-                    sy2 = int(scy + 70*np.sin(sth))
-                    cv2.arrowedLine(view, (scx, scy), (sx2, sy2), (0, 255, 255), 2, tipLength=0.25)
-
-                cv2.putText(view, "Robot: FOUND", (20, 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
-            else:
-                cv2.putText(view, "Robot: NOT FOUND", (20, 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
-
-            # monitoring du taux de frames ratées
-            miss_ratio = self.not_found_stats["last_ratio"] * 100.0
-            cv2.putText(view, f"miss={miss_ratio:.0f}%", (20, 70),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
-
-            cv2.imshow("VISION LIVE", view)
-            key = cv2.waitKey(1) & 0xFF
-
-            if key in [27, ord('q')]:
-                print("[INFO] Sortie demandée (q/ESC).")
-                break
-
-            if key == ord('r'):
-                # je mets à jour la map statique avec la frame courante
-                print("[INFO] Re-freeze de la map (touche r).")
-                self.clear_static_map()
-                self.freeze_map_from_frame(frame)
-
-            if key == ord('p'):
-                # recalibration complète en live
-                print("[INFO] Recalibration params (touche p).")
-                self.init_colors(frame)
-                self.init_canny(frame)
-                if params_path:
-                    self.save_params(params_path)
-                self.freeze_map_from_frame(frame)
-                self.reset_monitoring()
-
-        cap.release()
-        cv2.destroyAllWindows()
-
     # =======================================
     #  ACCÈS SIMPLE AU POSE ROBOT
     # =======================================
@@ -825,7 +497,6 @@ if __name__ == "__main__":
 
     vision = Vision()
     img = vision.load("table7.jpg")
-    # si je veux tester en live : vision.run_webcam(cam_index=0, params_path=vision.default_params_path)  # warn_ratio=0.3 pour alerte plus tôt
 
     print("=== INIT COULEURS ===")
     vision.init_colors(img)
@@ -833,15 +504,12 @@ if __name__ == "__main__":
     print("=== INIT CANNY ===")
     vision.init_canny(img)
 
-    # exemple offline : je fige la map une fois sur l'image, comme en webcam
-    polys = vision.freeze_map_from_frame(img)
-
+    polys = vision.process(img)
     robot = vision.detect_robot(img)  # robot["center"], robot["theta"], robot["found"]
 
     print("Robot flag:", int(robot["found"]))
     print("Robot center:", robot["center"])
     print("Robot theta (rad):", robot["theta"])
-    print("Robot theta (deg):", np.degrees(robot["theta"]))
 
     out = img.copy()
 
