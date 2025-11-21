@@ -191,15 +191,15 @@ class Vision:
         mask_green = hsv_mask_circular(hsv, G_hmin, G_hmax)
 
         # candidats stricts
-        reds = find_circle_candidates(mask_red, minA, maxA, min_circularity=0.7)
-        greens = find_circle_candidates(mask_green, minA, maxA, min_circularity=0.7)
+        reds = find_circle_candidates(mask_red, minA, maxA, min_circularity=0.6)
+        greens = find_circle_candidates(mask_green, minA, maxA, min_circularity=0.6)
 
         best_pair = None
         best_score = -1e9
 
         for r in reds:
             for g in greens:
-                if not robot_pair_ok(r, g, max_r_rel_diff=0.15, dist_factor=1.0):
+                if not robot_pair_ok(r, g, max_r_rel_diff=0.15, dist_factor=2.4): #distance centres <= sqrt(min(area)) * dist_factor
                     continue
                 s = score_pair(r, g)
                 if s > best_score:
@@ -477,7 +477,7 @@ class Vision:
 if __name__ == "__main__":
 
     vision = Vision()
-    img = vision.load("table8.jpg")
+    img = vision.load("table9.jpg")
 
     print("=== INIT COULEURS ===")
     vision.init_colors(img)
