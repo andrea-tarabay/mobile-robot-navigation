@@ -149,6 +149,8 @@ class Vision:
             "green_area": 0.0,
             "robot_mask": None  # masque final du robot (uint8)
         }
+        #self.debug_remove_robot = 0   
+        self.debug_remove_robot = 1 # pour debug robot removal
 
         BASE = os.path.dirname(os.path.abspath(__file__))
         self.IMGS = os.path.join(BASE, "images")
@@ -216,7 +218,7 @@ class Vision:
             return self.robot_state
 
         red, green = best_pair
-        red_center = red["center"]
+        red_center = red["center"] 
         green_center = green["center"]
 
         center = (
@@ -226,7 +228,8 @@ class Vision:
 
         dx = green_center[0] - red_center[0]
         dy = green_center[1] - red_center[1]
-        theta = float(np.arctan2(dy, dx))
+        theta = float(np.arctan2(dy, dx) - np.pi/2 )  # orientation robot
+        print("Theta (deg):", np.degrees(theta))
 
         # masque robot = union des 2 contours, dilaté
         robot_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
@@ -347,16 +350,32 @@ class Vision:
         1) détecte robot STRICT
         2) inpaint sur un masque dilaté
         => robot invisible pour Canny.
+        
+        Si self.debug_remove_robot == 1 :
+            affiche l'image nettoyée (pour la documentation)
         """
         state = self.detect_robot(frame)
         if not state["found"] or state["robot_mask"] is None:
-            return frame.copy(), None
+            cleaned = frame.copy()
+
+            # --- DEBUG OPTIONNEL ---
+            if getattr(self, "debug_remove_robot", 0) == 1:
+                cv2.imshow("REMOVE_ROBOT_DEBUG", cleaned)
+                cv2.waitKey(1)
+
+            return cleaned, None
 
         mask = state["robot_mask"]
-        # inpaint radius fort
-        removed = cv2.inpaint(frame, mask, inpaintRadius=7, flags=cv2.INPAINT_TELEA)
-        return removed, mask
 
+        # inpaint
+        removed = cv2.inpaint(frame, mask, inpaintRadius=7, flags=cv2.INPAINT_TELEA)
+
+        # --- DEBUG OPTIONNEL ---
+        if getattr(self, "debug_remove_robot", 0) == 1:
+            cv2.imshow("REMOVE_ROBOT_DEBUG", removed)
+            cv2.waitKey(1)
+
+        return removed, mask
     # =======================================
     #  PREPROCESS COMMUN CANNY
     # =======================================
@@ -477,7 +496,7 @@ class Vision:
 if __name__ == "__main__":
 
     vision = Vision()
-    img = vision.load("table9.jpg")
+    img = vision.load("table7.jpg")
 
     print("=== INIT COULEURS ===")
     vision.init_colors(img)
