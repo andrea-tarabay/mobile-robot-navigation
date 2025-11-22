@@ -1,7 +1,7 @@
 {
   "color_params": {
-    "R_hmin": 179,
-    "R_hmax": 0,
+    "R_hmin": 170,
+    "R_hmax": 10,
     "G_hmin": 40,
     "G_hmax": 90,
     "min_area": 50,
@@ -10,8 +10,8 @@
   "canny_params": {
     "low": 70,
     "high": 120,
-    "min_area": 300,
-    "max_area": 1218517
+    "min_area": 970,
+    "max_area": 1877306
   },
   "warp_matrix": [
     [
