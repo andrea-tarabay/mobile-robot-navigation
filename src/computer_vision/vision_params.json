@@ -8,10 +8,10 @@
     "max_area": 2000
   },
   "canny_params": {
-    "low": 70,
-    "high": 120,
-    "min_area": 970,
-    "max_area": 1877306
+    "low": 53,
+    "high": 70,
+    "min_area": 1496,
+    "max_area": 1191884
   },
   "warp_matrix": [
     [
