@@ -11,18 +11,29 @@ class DifferentialDriveSystem(NonlinearSystem):
 
     Attributes
     ----------
-        dt (float): Sampling time
+        dt: float
+            Sampling time
+        lambda_: float
+            Conversion factor from wheel control input to robot linear/angular velocity
+        d: float
+            Distance between the wheels
 
     Methods
     -------
-        motion_model(x, u): DDR motion model
-        measurement_model(x): DDR measurement model
-        motion_jacobian(x, u): Jacobian of motion model
-        measurement_jacobian(x): Jacobian of measurement model
+        motion_model(x, u): 
+            DDR motion model
+        measurement_model(x): 
+            DDR measurement model
+        motion_jacobian(x, u): 
+            Jacobian of motion model
+        measurement_jacobian(x): 
+            Jacobian of measurement model
     """
 
-    def __init__(self, dt):
+    def __init__(self, dt, lambda_, d):
         self.dt = dt
+        self.lambda_ = lambda_
+        self.d = d
 
         super().__init__(
             g=self.motion_model,
@@ -33,28 +44,32 @@ class DifferentialDriveSystem(NonlinearSystem):
         )
 
     # -------------------------------------------------------------
-    #   NONLINEAR MOTION MODEL  (f)
+    #   NONLINEAR MOTION MODEL  (g)
     # -------------------------------------------------------------
     def motion_model(self, x, u):
         """
         DDR motion model:
-            px'    = px + v * cos(theta) * dt
-            py'    = py + v * sin(theta) * dt
-            theta' = theta + omega * dt
+            px'    = px + dt * v * cos(theta)
+            py'    = py + dt * v * sin(theta)
+            theta' = theta - dt * omega
+            v'     = lamda/2 * (ur + ul)
+            omega' = lamda/(d) * (ur - ul)
         """
-        px, py, theta = x
-        v, omega = u
+        px, py, theta, v, omega = x
+        ur, ul = u
 
-        px_new = px + v * np.cos(theta) * self.dt
-        py_new = py + v * np.sin(theta) * self.dt
-        theta_new = theta + omega * self.dt
+        px_new = px + self.dt * v * np.cos(theta)
+        py_new = py + self.dt * v * np.sin(theta)
+        theta_new = theta - self.dt * omega
+        v_new = self.lambda_ * (ur + ul) / 2
+        omega_new = self.lambda_ * (ur - ul) / self.d
 
-        return np.array([px_new, py_new, theta_new])
+        return np.array([px_new, py_new, theta_new, v_new, omega_new])
 
     # -------------------------------------------------------------
     #   NONLINEAR MEASUREMENT MODEL  (h)
     # -------------------------------------------------------------
-    def measurement_model(self, x):
+    def measurement_model(self, x): # TODO: call sensors function ?
         """
         Example measurement: robot directly observes its position.
         z = [px, py]
@@ -65,38 +80,47 @@ class DifferentialDriveSystem(NonlinearSystem):
     # -------------------------------------------------------------
     #   MOTION MODEL JACOBIAN  (G)
     # -------------------------------------------------------------
-    def motion_jacobian(self, x, u):
+    def motion_jacobian(self, x):
         """
         Jacobian of g(x, u) w.r.t. x:
 
             ∂g/∂x =
-            [ 1   0   -v*dt*sin(theta) ]
-            [ 0   1    v*dt*cos(theta) ]
-            [ 0   0          1         ]
+            [ 1   0   -dt*v*sin(theta)   dt*cos(theta)   0 ]
+            [ 0   1    dt*v*cos(theta)   dt*sin(theta)   0 ]
+            [ 0   0          1                 0       -dt ]
+            [ 0   0          0                 0         0 ]
+            [ 0   0          0                 0         0 ]
         """
-        _, _, theta = x
-        v, _ = u
+        _, _, theta, v, _ = x
 
         F = np.array([
-            [1, 0, -v * self.dt * np.sin(theta)],
-            [0, 1,  v * self.dt * np.cos(theta)],
-            [0, 0, 1]
+            [1, 0, -self.dt * v * np.sin(theta), self.dt * np.cos(theta), 0],
+            [0, 1,  self.dt * v * np.cos(theta), self.dt * np.sin(theta), 0],
+            [0, 0, 1, 0, -self.dt],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0]
         ])
         return F
 
     # -------------------------------------------------------------
     #   MEASUREMENT MODEL JACOBIAN  (H)
     # -------------------------------------------------------------
-    def measurement_jacobian(self, x):
+    def measurement_jacobian(self, x): # TODO: add the second jacobian in case cam not available !
         """
-        ∂h/∂x =
-            [1 0 0]
-            [0 1 0]
+        Jacobian of h(x) w.r.t. x:
 
-        Since z = [px, py].
+            ∂h/∂x =
+            [ 1   0   0       0              0       ]
+            [ 0   1   0       0              0       ]
+            [ 0   0   1       0              0       ]
+            [ 0   0   0   1/lambda_    d/(2*lambda_) ]
+            [ 0   0   0   1/lambda_   -d/(2*lambda_) ]
         """
         H = np.array([
-            [1, 0, 0],
-            [0, 1, 0]
+            [1, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0],
+            [0, 0, 1, 0, 0],
+            [0, 0, 0, 1/self.lambda_,  self.d/(2*self.lambda_)],
+            [0, 0, 0, 1/self.lambda_, -self.d/(2*self.lambda_)]
         ])
         return H
