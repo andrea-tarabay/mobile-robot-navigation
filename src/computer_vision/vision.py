@@ -80,7 +80,7 @@ def find_circle_candidates(mask, min_area, max_area, min_circularity=0.7):
     return candidates
 
 
-def robot_pair_ok(red, green, max_r_rel_diff=0.15, dist_factor=1.0):
+def robot_pair_ok(red, green, max_r_rel_diff=0.25, dist_factor=4.0):
     """
     Conditions strictes:
     - rayons égaux ±15%
@@ -444,7 +444,7 @@ class Vision:
 
         for r in reds:
             for g in greens:
-                if not robot_pair_ok(r, g, max_r_rel_diff=0.15, dist_factor=4): #distance centres <= sqrt(min(area)) * dist_factor
+                if not robot_pair_ok(r, g, max_r_rel_diff=0.25, dist_factor=4): #distance centres <= sqrt(min(area)) * dist_factor
                     continue
                 s = score_pair(r, g)
                 if s > best_score:
@@ -740,7 +740,7 @@ class Vision:
         cv2.createTrackbar("Canny Low",  "CANNY INIT", low, 255, lambda x: None)
         cv2.createTrackbar("Canny High", "CANNY INIT", high, 255, lambda x: None)
         cv2.createTrackbar("Min Area",   "CANNY INIT", minA, 50000, lambda x: None)
-        cv2.createTrackbar("Max Area",   "CANNY INIT", maxA, 80000, lambda x: None)
+        cv2.createTrackbar("Max Area",   "CANNY INIT", maxA, 2000000, lambda x: None)
 
         while True:
             low  = cv2.getTrackbarPos("Canny Low",  "CANNY INIT")
