@@ -82,7 +82,7 @@ class DifferentialDriveSystem(NonlinearSystem):
 
         mur = 1/self.lambda_ * (v + self.d/2 * omega)
         mul = 1/self.lambda_ * (v - self.d/2 * omega)
-        
+
         return np.array([mpx, mpy, mtheta, mur, mul])
 
     # -------------------------------------------------------------
