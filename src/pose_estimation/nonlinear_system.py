@@ -2,9 +2,8 @@ import numpy as np
 
 class NonlinearSystem:
     """
-    Generic nonlinear system model for use with an Extended Kalman Filter.
-    
-    Subclasses or instances should define:
+    Class representing a generic nonlinear state-space system with the following 
+    properties:
         - g(x, u): nonlinear state transition function
         - h(x): nonlinear measurement function
         - G(x): Jacobian of g wrt state
@@ -12,47 +11,100 @@ class NonlinearSystem:
 
     Attributes
     ----------
-        g (callable): State transition function g(x, u)
-        h (callable): Measurement function h(x)
-        G (callable): Jacobian of g with respect to x
-        H (callable): Jacobian of h with respect to x
+        motion_model (callable): State transition function g(x, u)
+        measurement_model (callable): Measurement function h(x)
+        motion_jacobian (callable): Jacobian of g with respect to x
+        measurement_jacobian (callable): Jacobian of h with respect to x
         dt (float, optional): Sampling time if needed by motion model
 
     Methods
     -------
         predict_state(x, u): Predict next state given current state x and control u.
         predict_measurement(x): Predict measurement given state x.
-        G_jac(x): Compute Jacobian of g at state x.
-        H_jac(x): Compute Jacobian of h at state x.
+        motion_model_jac(x): Compute Jacobian of g at state x.
+        measurement_model_jac(x): Compute Jacobian of h at state x.
     """
 
-    def __init__(self, g, h, G, H, dt=None):
+    def __init__(self, motion_model, measurement_model, motion_jacobian, measurement_jacobian, dt=None):
         """
         Initialize the nonlinear system model.
 
         Parameters
         ----------
-            g (callable): State transition function g(x, u)
-            h (callable): Measurement function h(x)
-            G (callable): Jacobian of g with respect to x
-            H (callable): Jacobian of h with respect to x
+            motion_model (callable): State transition function g(x, u)
+            measurement_model (callable): Measurement function h(x)
+            motion_jacobian (callable): Jacobian of g with respect to x
+            measurement_jacobian (callable): Jacobian of h with respect to x
             dt (float, optional): Sampling time if needed by motion model
         """
-        self.g = g
-        self.h = h
-        self.G = G
-        self.H = H
+        self.motion_model = motion_model
+        self.measurement_model = measurement_model
+        self.motion_jacobian = motion_jacobian
+        self.measurement_jacobian = measurement_jacobian
         self.dt = dt
 
-    # Wrappers (optional, for convenience and readability)
     def predict_next_state(self, x, u):
-        return self.g(x, u)
+        """
+        Predict next state given current state x and control u.
+
+        Parameters
+        ----------
+            x: np.ndarray
+                Current state vector
+            u: np.ndarray
+                Control input vector
+
+        Returns
+        -------
+            np.ndarray
+                Predicted next state vector
+        """
+        return self.motion_model(x, u)
 
     def predict_measurement(self, x):
-        return self.h(x)
+        """
+        Predict measurement given state x
+        
+        Parameters
+        ----------
+            x: np.ndarray
+                Current state vector
+        
+        Returns
+        -------
+            np.ndarray
+                Predicted measurement vector
+        """
+        return self.measurement_model(x)
 
     def motion_model_jac(self, x):
-        return self.G(x)
+        """
+        Compute Jacobian of motion model at state x.
+        
+        Parameters
+        ----------
+            x: np.ndarray
+                Current state vector
+        
+        Returns
+        -------
+            np.ndarray
+                Jacobian matrix of motion model
+        """
+        return self.motion_jacobian(x)
 
     def measurement_model_jac(self, x):
-        return self.H(x)
+        """
+        Compute Jacobian of measurement model at state x.
+
+        Parameters
+        ----------
+            x: np.ndarray
+                Current state vector
+
+        Returns
+        -------
+            np.ndarray
+                Jacobian matrix of measurement model
+        """
+        return self.measurement_jacobian(x)
