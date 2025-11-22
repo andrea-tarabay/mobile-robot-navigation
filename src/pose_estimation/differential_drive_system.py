@@ -25,9 +25,9 @@ class DifferentialDriveSystem(NonlinearSystem):
         self.dt = dt
 
         super().__init__(
-            f=self.motion_model,
+            g=self.motion_model,
             h=self.measurement_model,
-            F_jacobian=self.motion_jacobian,
+            G=self.motion_jacobian,
             H=self.measurement_jacobian,
             dt=dt
         )
@@ -63,13 +63,13 @@ class DifferentialDriveSystem(NonlinearSystem):
         return np.array([px, py])
 
     # -------------------------------------------------------------
-    #   MOTION MODEL JACOBIAN  (F)
+    #   MOTION MODEL JACOBIAN  (G)
     # -------------------------------------------------------------
     def motion_jacobian(self, x, u):
         """
-        Jacobian of f(x, u) w.r.t. x:
+        Jacobian of g(x, u) w.r.t. x:
 
-            ∂f/∂x =
+            ∂g/∂x =
             [ 1   0   -v*dt*sin(theta) ]
             [ 0   1    v*dt*cos(theta) ]
             [ 0   0          1         ]
