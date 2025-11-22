@@ -939,7 +939,7 @@ class Vision:
         3) boucle: detect_robot(frame_live) + affichage, sans recalcul map
         Touches utiles:
             - 'r' : refreeze la map si la scène a bougé (clear_static_map + freeze)
-            - 'p' : relance les trackbars pour recalibrer + sauvegarde des params
+            - 'p' : relance les trackbars pour recalibrer + sauvegarde des paramsr
             - 'q' ou ESC : quitte proprement
         warn_ratio: ratio de frames ratées qui déclenche le warning console (None => seuil actuel)
         Args: cam_index (int), params_path (str JSON), warn_ratio (float), force_new_init (bool).
@@ -981,6 +981,7 @@ class Vision:
 
             # je prépare une version redressée pour affichage
             view = self._apply_perspective(frame.copy())
+            cv2.imwrite("vision_live_output_pour_mehdi.jpg", view)
 
             # process() renvoie directement la map figée si elle existe
             polys = self.process(frame)
@@ -1021,6 +1022,7 @@ class Vision:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2)
 
             cv2.imshow("VISION LIVE", view)
+            
             key = cv2.waitKey(1) & 0xFF
 
             if key in [27, ord('q')]:
