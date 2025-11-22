@@ -174,7 +174,7 @@ class Vision:
         self.debug_remove_robot = 1 # je laisse 1 quand je veux voir l'inpaint en live
 
         # filtre exponentiel pour lisser centre + orientation (je garde léger)
-        self.pose_filter_alpha = 0.35
+        self.pose_filter_alpha = 0.45
         self.pose_filtered = {"center": None, "theta": None}
 
         # stats basiques pour monitorer les frames perdues
