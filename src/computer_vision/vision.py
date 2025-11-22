@@ -795,6 +795,10 @@ class Vision:
             self.canny_params["high"]
         )
 
+        # petite fermeture morpho pour boucher les trous 1 px (évite les polygones ouverts)
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 20))#ici Canny matrix probleme
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, k, iterations=1)
+
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         polys = []
@@ -888,29 +892,32 @@ class Vision:
         if params_path is None:
             params_path = self.default_params_path
 
-        need_trackbars = force_trackbars or (params_path and not os.path.exists(params_path))
-        if need_trackbars:
-            print("[INFO] Trackbars init (pas de params ou recalibration forcée).")
-            self.init_colors(frame)
-            self.init_canny(frame)
-        else:
-            print(f"[INFO] Chargement des params existants ({params_path}).")
-            try:
-                self.load_params(params_path)
-            except Exception as e:
-                print(f"[WARN] Chargement params échoué ({e}), je bascule en trackbars.")
-                self.init_colors(frame)
-                self.init_canny(frame)
-
-        # calibration perspective manuelle (4 points) si demandée
+        # 1) d'abord, je calibre le warp si demandé (sur l'image brute)
         if manual_warp:
             try:
                 self.calibrate_perspective_manual(frame)
             except Exception as e:
                 print(f"[WARN] Warp manuel non appliqué: {e}")
 
+        # 2) je travaille ensuite sur l'image redressée pour toutes les trackbars/map
+        frame_ref = self._apply_perspective(frame)
+
+        need_trackbars = force_trackbars or (params_path and not os.path.exists(params_path))
+        if need_trackbars:
+            print("[INFO] Trackbars init (pas de params ou recalibration forcée).")
+            self.init_colors(frame_ref)
+            self.init_canny(frame_ref)
+        else:
+            print(f"[INFO] Chargement des params existants ({params_path}).")
+            try:
+                self.load_params(params_path)
+            except Exception as e:
+                print(f"[WARN] Chargement params échoué ({e}), je bascule en trackbars.")
+                self.init_colors(frame_ref)
+                self.init_canny(frame_ref)
+
         # map obstacles figée (calculée une seule fois)
-        polys = self.freeze_map_from_frame(frame)
+        polys = self.freeze_map_from_frame(frame_ref)
 
         # sauvegarde des paramètres (y compris warp)
         if save_params and params_path:
