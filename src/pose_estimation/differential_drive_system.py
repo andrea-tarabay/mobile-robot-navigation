@@ -69,13 +69,21 @@ class DifferentialDriveSystem(NonlinearSystem):
     # -------------------------------------------------------------
     #   NONLINEAR MEASUREMENT MODEL  (h)
     # -------------------------------------------------------------
-    def measurement_model(self, x): # TODO: call sensors function ?
+    def measurement_model(self, x): # TODO: call sensors function ? NO ! It is just the model
         """
-        Example measurement: robot directly observes its position.
-        z = [px, py]
+        DDR measurement model:
+            mpx = px
+            mpy = py
+            mtheta = theta
+            mur = 1/lambda_ * (v + d/2 * omega)
+            mul = 1/lambda_ * (v - d/2 * omega)
         """
-        px, py, _ = x
-        return np.array([px, py])
+        mpx, mpy, mtheta, v, omega = x
+
+        mur = 1/self.lambda_ * (v + self.d/2 * omega)
+        mul = 1/self.lambda_ * (v - self.d/2 * omega)
+        
+        return np.array([mpx, mpy, mtheta, mur, mul])
 
     # -------------------------------------------------------------
     #   MOTION MODEL JACOBIAN  (G)

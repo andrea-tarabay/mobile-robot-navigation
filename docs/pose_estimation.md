@@ -35,15 +35,15 @@ Let's consider the previously defined model of the system but with some Gaussian
 \end{equation}
 ```
 
-Where $\epsilon_t \sim N(0, R)$ is a multinormal modelling the uncertainty introduced by the state-space transition, and $\delta_t \sim N(0, Q)$ is a multinormal modelling the measurement noise.
+Where $\epsilon_t \sim N(0, Q)$ is a multinormal modelling the uncertainty introduced by the state-space transition, and $\delta_t \sim N(0, R)$ is a multinormal modelling the measurement noise.
 
 ### Prediction step
 
-1. We need to estimate the covariance $R$ of the stochastic noise $\epsilon_t \sim N(0, R)$ affecting the state-space model.
+1. We need to estimate the covariance $Q$ of the stochastic noise $\epsilon_t \sim N(0, Q)$ affecting the state-space model.
 
 ```math
 \begin{equation}
-    R = ?
+    Q = ?
 \end{equation}
 ```
 
@@ -74,11 +74,11 @@ Where $\epsilon_t \sim N(0, R)$ is a multinormal modelling the uncertainty intro
 
 ### Measurement update step
 
-1. We need to estimate the covariance $Q$ of the stochastic noise $\delta_t \sim N(0, Q)$ describing the measurement noise.
+1. We need to estimate the covariance $R$ of the stochastic noise $\delta_t \sim N(0, R)$ describing the measurement noise.
 
 ```math
 \begin{equation}
-    Q = ?
+    R = ?
 \end{equation}
 ```
 

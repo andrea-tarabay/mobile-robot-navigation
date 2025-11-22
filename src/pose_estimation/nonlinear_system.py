@@ -45,14 +45,14 @@ class NonlinearSystem:
         self.dt = dt
 
     # Wrappers (optional, for convenience and readability)
-    def predict_state(self, x, u):
+    def predict_next_state(self, x, u):
         return self.g(x, u)
 
     def predict_measurement(self, x):
         return self.h(x)
 
-    def G_jac(self, x):
+    def motion_model_jac(self, x):
         return self.G(x)
 
-    def H_jac(self, x):
+    def measurement_model_jac(self, x):
         return self.H(x)

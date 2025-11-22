@@ -1,4 +1,5 @@
 import numpy as np
+from src.pose_estimation.nonlinear_system import NonlinearSystem
 
 class ExtendedKalmanFilter:
     """
@@ -40,7 +41,7 @@ class ExtendedKalmanFilter:
         Prints the person's name and age.
     """
 
-    def __init__(self, mu0, Sigma0, g, h, G, H, Q, R):
+    def __init__(self, mu0, Sigma0, system: NonlinearSystem, Q, R):
         """
         Initialize the EKF.
 
@@ -66,10 +67,7 @@ class ExtendedKalmanFilter:
         self.mu = mu0
         self.Sigma = Sigma0
 
-        self.g = g
-        self.h = h
-        self.G = G
-        self.H = H
+        self.system = system
 
         self.Q = Q
         self.R = R
@@ -81,17 +79,17 @@ class ExtendedKalmanFilter:
     def predict(self, u):
         """Perform the EKF prediction step."""
         # Nonlinear prediction
-        x_pred = self.g(self.mu, u)
+        mu_pred = self.system.predict_next_state(self.mu, u)
 
         # Jacobian evaluation
-        F = self.F_jacobian(self.mu, u)
+        G = self.system.motion_model_jac(self.mu)
 
         # Covariance propagation
-        P_pred = F @ self.Sigma @ F.T + self.Q
+        Sigma_pred = G @ self.Sigma @ G.T + self.Q
 
         # Store
-        self.mu = x_pred
-        self.Sigma = P_pred
+        self.mu = mu_pred
+        self.Sigma = Sigma_pred
 
         return self.mu, self.Sigma
 
@@ -102,29 +100,29 @@ class ExtendedKalmanFilter:
     def update(self, z):
         """Perform the EKF update step."""
         # Predict measurement
-        z_pred = self.h(self.mu)
+        z_pred = self.system.predict_measurement(self.mu)
 
         # Measurement Jacobian
-        H = self.H_jacobian(self.mu)
+        H = self.system.measurement_model_jac(self.mu)
 
         # Innovation
-        y = z - z_pred
+        i = z - z_pred
 
         # Innovation covariance
         S = H @ self.Sigma @ H.T + self.R
 
         # Kalman gain
-        K = self.Sigma @ H.T @ np.linalg.inv(S)
+        K = self.Sigma @ H.T @ np.linalg.inv(S) # TODO: use solve for numerical stability
 
         # Update mean
-        x_new = self.mu + K @ y
+        mu_new = self.mu + K @ i
 
         # Joseph form covariance update for stability
-        I = np.eye(self.Sigma.shape[0])
-        P_new = (I - K @ H) @ self.Sigma @ (I - K @ H).T + K @ self.R @ K.T
+        I = np.eye(self.Sigma.shape[0]) # TODO: understand if this is necessary
+        Sigma_new = (I - K @ H) @ self.Sigma @ (I - K @ H).T + K @ self.R @ K.T
 
-        self.mu = x_new
-        self.Sigma = P_new
+        self.mu = mu_new
+        self.Sigma = Sigma_new
 
         return self.mu, self.Sigma
 
