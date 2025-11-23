@@ -5,16 +5,13 @@ class ExtendedKalmanFilter:
     """
     Generic Extended Kalman Filter (EKF) implementation.
 
-    Theoretical requirements of the system to be supplied:
+    Theoretical requirements of the system to be supplied through
+    a NonlinearSystem instance:
         - nonlinear motion model      g(x, u)
         - nonlinear measurement model h(x)
         - motion model Jacobian       G(x)
         - measurement Jacobian        H(x)
         - noise covariances           Q, R
-
-    The internal state mean and covariance, as well as the
-    system models and noise covariances, are stored in the 
-    class as follows:
 
     Attributes
     ----------
@@ -22,14 +19,8 @@ class ExtendedKalmanFilter:
         State estimate vector (n×1)
     Sigma: np.ndarray
         Covariance estimate matrix (n×n)
-    g: callable
-        State transition function
-    h: callable
-        Measurement function
-    G: callable
-        Jacobian of state transition
-    H: callable
-        Jacobian of measurement model
+    system: NonlinearSystem
+        Nonlinear system model containing g, h, G, H
     Q: np.ndarray
         Process noise covariance
     R: np.ndarray
@@ -37,8 +28,12 @@ class ExtendedKalmanFilter:
 
     Methods
     -------
-    info(additional=""):
-        Prints the person's name and age.
+    predict(u): 
+        Perform the EKF prediction step.
+    update(z): 
+        Perform the EKF update step.
+    step(u, z): 
+        Convenience function that performs predict + update.
     """
 
     def __init__(self, mu0, Sigma0, system: NonlinearSystem, Q, R):
@@ -51,14 +46,8 @@ class ExtendedKalmanFilter:
                 Initial state vector (n×1)
             Sigma0: np.ndarray
                 Initial covariance matrix (n×n)
-            g: callable
-                State transition function
-            h: callable
-                Measurement function
-            G: callable
-                Jacobian of state transition
-            H: callable
-                Jacobian of measurement model
+            system: NonlinearSystem
+                Nonlinear system model containing g, h, G, H
             Q: np.ndarray
                 Process noise covariance
             R: np.ndarray
@@ -77,17 +66,26 @@ class ExtendedKalmanFilter:
     # ---------------------------------------------------------------
 
     def predict(self, u):
-        """Perform the EKF prediction step."""
-        # Nonlinear prediction
+        """
+        Perform the EKF prediction step.
+        
+        Parameters
+        ----------
+            u: np.ndarray
+                Control input vector
+        
+        Returns
+        -------
+            mu_pred: np.ndarray
+                Predicted state vector
+            Sigma_pred: np.ndarray
+                Predicted covariance matrix
+        """
         mu_pred = self.system.predict_next_state(self.mu, u)
 
-        # Jacobian evaluation
         G = self.system.motion_model_jac(self.mu)
-
-        # Covariance propagation
         Sigma_pred = G @ self.Sigma @ G.T + self.Q
 
-        # Store
         self.mu = mu_pred
         self.Sigma = Sigma_pred
 
@@ -98,26 +96,33 @@ class ExtendedKalmanFilter:
     # ---------------------------------------------------------------
 
     def update(self, z):
-        """Perform the EKF update step."""
-        # Predict measurement
+        """
+        Perform the EKF update step.
+        
+        Parameters
+        ----------
+            z: np.ndarray
+                Measurement vector
+        
+        Returns
+        -------
+            mu_upd: np.ndarray
+                Updated state vector
+            Sigma_upd: np.ndarray
+                Updated covariance matrix
+        """
         z_pred = self.system.predict_measurement(self.mu)
-
-        # Measurement Jacobian
-        H = self.system.measurement_model_jac(self.mu)
-
-        # Innovation
         i = z - z_pred
 
-        # Innovation covariance
+        H = self.system.measurement_model_jac(self.mu)
         S = H @ self.Sigma @ H.T + self.R
 
-        # Kalman gain
         K = self.Sigma @ H.T @ np.linalg.inv(S) # TODO: use solve for numerical stability
 
-        # Update mean
+        # Update state mean
         mu_new = self.mu + K @ i
 
-        # Joseph form covariance update for stability
+        # Update covariance using Joseph form for numerical stability
         I = np.eye(self.Sigma.shape[0]) # TODO: understand if this is necessary
         Sigma_new = (I - K @ H) @ self.Sigma @ (I - K @ H).T + K @ self.R @ K.T
 
@@ -131,6 +136,22 @@ class ExtendedKalmanFilter:
     # ---------------------------------------------------------------
 
     def step(self, u, z):
-        """Convenience function that performs predict + update."""
+        """
+        Convenience function that performs predict + update.
+        
+        Parameters
+        ----------
+            u: np.ndarray
+                Control input vector
+            z: np.ndarray
+                Measurement vector
+        
+        Returns
+        -------
+            mu: np.ndarray
+                Updated state vector after predict and update
+            Sigma: np.ndarray
+                Updated covariance matrix after predict and update
+        """
         self.predict(u)
         return self.update(z)
