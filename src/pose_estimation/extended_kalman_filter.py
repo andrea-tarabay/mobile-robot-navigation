@@ -20,11 +20,7 @@ class ExtendedKalmanFilter:
     Sigma: np.ndarray
         Covariance estimate matrix (n×n)
     system: NonlinearSystem
-        Nonlinear system model containing g, h, G, H
-    Q: np.ndarray
-        Process noise covariance
-    R: np.ndarray
-        Measurement noise covariance
+        Nonlinear system model containing g, h, G, H, Q, R
 
     Methods
     -------
@@ -36,7 +32,7 @@ class ExtendedKalmanFilter:
         Convenience function that performs predict + update.
     """
 
-    def __init__(self, mu0, Sigma0, system: NonlinearSystem, Q, R):
+    def __init__(self, mu0, Sigma0, system: NonlinearSystem):
         """
         Initialize the EKF.
 
@@ -47,19 +43,12 @@ class ExtendedKalmanFilter:
             Sigma0: np.ndarray
                 Initial covariance matrix (n×n)
             system: NonlinearSystem
-                Nonlinear system model containing g, h, G, H
-            Q: np.ndarray
-                Process noise covariance
-            R: np.ndarray
-                Measurement noise covariance
+                Nonlinear system model containing g, h, G, H, Q, R
         """
         self.mu = mu0
         self.Sigma = Sigma0
 
         self.system = system
-
-        self.Q = Q
-        self.R = R
 
     # ---------------------------------------------------------------
     #                   PREDICTION STEP
@@ -84,7 +73,7 @@ class ExtendedKalmanFilter:
         mu_pred = self.system.predict_next_state(self.mu, u)
 
         G = self.system.motion_model_jac(self.mu)
-        Sigma_pred = G @ self.Sigma @ G.T + self.Q
+        Sigma_pred = G @ self.Sigma @ G.T + self.system.get_process_noise_cov()
 
         self.mu = mu_pred
         self.Sigma = Sigma_pred
@@ -115,7 +104,7 @@ class ExtendedKalmanFilter:
         i = z - z_pred
 
         H = self.system.measurement_model_jac(self.mu)
-        S = H @ self.Sigma @ H.T + self.R
+        S = H @ self.Sigma @ H.T + self.system.get_measurement_noise_cov()
 
         K = self.Sigma @ H.T @ np.linalg.inv(S) # TODO: use solve for numerical stability
 
@@ -124,7 +113,7 @@ class ExtendedKalmanFilter:
 
         # Update covariance using Joseph form for numerical stability
         I = np.eye(self.Sigma.shape[0]) # TODO: understand if this is necessary
-        Sigma_new = (I - K @ H) @ self.Sigma @ (I - K @ H).T + K @ self.R @ K.T
+        Sigma_new = (I - K @ H) @ self.Sigma @ (I - K @ H).T + K @ self.system.get_measurement_noise_cov() @ K.T
 
         self.mu = mu_new
         self.Sigma = Sigma_new

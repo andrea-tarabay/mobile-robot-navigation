@@ -34,7 +34,7 @@ class DifferentialDriveSystem(NonlinearSystem):
             Jacobian of measurement model
     """
 
-    def __init__(self, dt, lambda_, axle_length, reduced=False):
+    def __init__(self, dt, lambda_, axle_length, motion_noise_cov, measurement_noise_cov, reduced=False):
         """
         Initialize the DDR system model.
         
@@ -48,16 +48,22 @@ class DifferentialDriveSystem(NonlinearSystem):
                 Distance between the wheels
             reduced: bool
                 If True, use reduced measurement model (wheel encoders only), else full model
+            motion_noise_cov: np.ndarray
+                Process noise covariance
+            measurement_noise_cov: np.ndarray
+                Measurement noise covariance
         """
         self.lambda_ = lambda_
         self.axle_length = axle_length
         self.reduced = reduced
-
+        
         super().__init__(
             motion_model=self.motion_model,
             measurement_model=self.measurement_model,
             motion_jacobian=self.motion_jacobian,
             measurement_jacobian=self.measurement_jacobian,
+            Q=motion_noise_cov,
+            R=measurement_noise_cov,
             dt=dt
         )
 

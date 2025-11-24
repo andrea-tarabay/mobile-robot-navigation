@@ -43,7 +43,14 @@ Where $\epsilon_t \sim N(0, Q)$ is a multinormal modelling the uncertainty intro
 
 ```math
 \begin{equation}
-    Q = ?
+    Q = 
+    \begin{pmatrix}
+        q_x & 0 & 0 & 0 & 0 \\
+        0 & q_y & 0 & 0 & 0 \\
+        0 & 0 & q_\theta & 0 & 0 \\
+        0 & 0 & 0 & q_v & 0 \\
+        0 & 0 & 0 & 0 & q_\omega
+    \end{pmatrix} = ?
 \end{equation}
 ```
 
@@ -78,7 +85,24 @@ Where $\epsilon_t \sim N(0, Q)$ is a multinormal modelling the uncertainty intro
 
 ```math
 \begin{equation}
-    R = ?
+    R =
+    \begin{pmatrix}
+        r_x & 0 & 0 & 0 & 0 \\
+        0 & r_y & 0 & 0 & 0 \\
+        0 & 0 & r_\theta & 0 & 0 \\
+        0 & 0 & 0 & r_{u_r} & 0 \\
+        0 & 0 & 0 & 0 & r_{u_l}
+    \end{pmatrix} = ?
+\end{equation}
+```
+
+```math
+\begin{equation}
+    R_{reduced} =
+    \begin{pmatrix}
+        0 & 0 & 0 & r_{u_r} & 0 \\
+        0 & 0 & 0 & 0 & r_{u_l}
+    \end{pmatrix} = ?
 \end{equation}
 ```
 
@@ -100,6 +124,18 @@ Where $\epsilon_t \sim N(0, Q)$ is a multinormal modelling the uncertainty intro
             1 & 0 & 0 & 0 & 0 \\
             0 & 1 & 0 & 0 & 0 \\
             0 & 0 & 1 & 0 & 0 \\
+            0 & 0 & 0 & \frac{1}{\lambda} & \frac{l}{\lambda} \\
+            0 & 0 & 0 & \frac{1}{\lambda} & -\frac{l}{\lambda}
+        \end{pmatrix}
+    \end{align*}
+\end{equation}
+```
+
+```math
+\begin{equation}
+    \begin{align*}
+        H_{k,reduced} &= 
+        \begin{pmatrix}
             0 & 0 & 0 & \frac{1}{\lambda} & \frac{l}{\lambda} \\
             0 & 0 & 0 & \frac{1}{\lambda} & -\frac{l}{\lambda}
         \end{pmatrix}
