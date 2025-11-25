@@ -128,6 +128,9 @@ class Vision:
             "robot_mask": None,
         }
 
+        # historique des poses pour export (tests Kalman, etc.)
+        self.pose_history = []
+
         base = os.path.dirname(os.path.abspath(__file__))
         self.IMGS = os.path.join(base, "images")
 
@@ -218,6 +221,22 @@ class Vision:
             "smooth_theta": self.smooth_pose["theta"],
         })
         return self.robot_state
+
+    # -----------------------------------------------------
+    def _record_pose(self, st):
+        """
+        Stocke (x, y, theta) dans l'historique dès que le robot est trouvé.
+        Utilise la version lissée si dispo, sinon la mesure brute.
+        """
+        if st is None or not st.get("found"):
+            return
+        center = st.get("smooth_center") or st.get("center")
+        theta = st.get("smooth_theta")
+        if theta is None:
+            theta = st.get("theta")
+        if center is None or theta is None:
+            return
+        self.pose_history.append((float(center[0]), float(center[1]), float(theta)))
 
     # -----------------------------------------------------
     def blur_robot(self, frame, state):
@@ -339,7 +358,7 @@ class Vision:
             self.poly_params["min_area"] = cv2.getTrackbarPos("MinA", win)
             self.poly_params["max_area"] = cv2.getTrackbarPos("MaxA", win)
 
-            polys, _ = self.process(frame_no_robot, show_debug=False, skip_blur=True)
+            polys, _ = self.process(frame_no_robot, show_debug=False, skip_blur=True, log_pose=False)
 
             dbg = frame_no_robot.copy()
             for poly in polys:
@@ -355,7 +374,7 @@ class Vision:
         cv2.destroyWindow(win)
 
     # -----------------------------------------------------
-    def process(self, frame, show_debug=False, skip_blur=False):
+    def process(self, frame, show_debug=False, skip_blur=False, log_pose=True):
         """
         Pipeline final sur une frame:
         - detect_robot ( red and green pr les couleurs)
@@ -386,6 +405,9 @@ class Vision:
                 #poly = cv2.approxPolyDP(c, 0.02 * cv2.arcLength(c, True), True)
                 pts = [(int(p[0][0]), int(p[0][1])) for p in poly]
                 polys.append(pts)
+
+        if log_pose:
+            self._record_pose(st)
 
         if not show_debug:
             return polys, st
@@ -420,9 +442,29 @@ class Vision:
         self.init_polygons(frame_clean)
 
         # je fige les polygones dès l'init pour ne plus les recalculer ensuite
-        polys, _ = self.process(frame, show_debug=False, skip_blur=False)
+        polys, _ = self.process(frame, show_debug=False, skip_blur=False, log_pose=False)
         self.static_polys = list(polys)
         print("[INFO] Initialisation terminé ( couleurs + Canny + polygones figé).")
+
+    # -----------------------------------------------------
+    def get_pose_array(self, as_numpy=True, clear=False):
+        """
+        Retourne l'historique des poses sous forme de liste ou np.ndarray (n x 3).
+        Utiliser clear=True pour vider l'historique après lecture.
+        """
+        if as_numpy:
+            data = np.array(self.pose_history, dtype=np.float32)
+            if data.size == 0:
+                data = data.reshape(0, 3)
+        else:
+            data = self.pose_history
+        if clear:
+            self.pose_history = []
+        return data
+
+    def reset_pose_history(self):
+        """Vide manuellement l'historique des poses."""
+        self.pose_history = []
 
 
 # =========================================================
