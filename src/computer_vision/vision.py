@@ -235,7 +235,8 @@ class Vision:
         mask_area = cv2.countNonZero(mask)
         est_radius = int(max(15, 3.0 * np.sqrt(mask_area / np.pi)))  # 3x rayon approx
 
-        ksize = max(3, 2 * est_radius + 1)
+        #ksize = max(3, 2 * est_radius + 1)
+        ksize = int(0.5 * est_radius)
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
         mask = cv2.dilate(mask, k, iterations=1)
 
@@ -371,7 +372,7 @@ class Vision:
         else:
             gray = cv2.cvtColor(frame_clean, cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray, self.canny_params["low"], self.canny_params["high"])
-            edges = strengthen_edges(edges, ksize=3, iterations=1)  # augmente si traits restent séparés
+            edges = strengthen_edges(edges, ksize=4, iterations=4)  # augmente si traits restent séparés
 
             contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             polys = []
@@ -379,7 +380,10 @@ class Vision:
                 a = cv2.contourArea(c)
                 if not (self.poly_params["min_area"] < a < self.poly_params["max_area"]):
                     continue
-                poly = cv2.approxPolyDP(c, 0.02 * cv2.arcLength(c, True), True)
+
+                epsilon = 0.007 * cv2.arcLength(c, True)  
+                poly = cv2.approxPolyDP(c, epsilon, True)
+                #poly = cv2.approxPolyDP(c, 0.02 * cv2.arcLength(c, True), True)
                 pts = [(int(p[0][0]), int(p[0][1])) for p in poly]
                 polys.append(pts)
 
@@ -435,8 +439,8 @@ if __name__ == "__main__":
     """
     vision = Vision()
     show_debug = True           # mettre False si un autre module consomme juste les données
-    mode_image = False           # False pour webcam
-    image_name = "table7.jpg"   # change le nom si nécessaire
+    mode_image = True           # False pour webcam
+    image_name = "table10.jpg"   # change le nom si nécessaire
 
     if mode_image:
         frame0 = vision.load(image_name)
