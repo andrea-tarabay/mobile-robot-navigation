@@ -18,9 +18,6 @@ class DifferentialDriveSystem(NonlinearSystem):
             Conversion factor from wheel control input to robot linear/angular velocity
         axle_length: float
             Distance between the wheels
-        reduced: bool
-            If True, use reduced measurement model (wheel encoders only), else full model 
-            (camera + wheel encoders)
 
     Methods
     -------
@@ -34,7 +31,8 @@ class DifferentialDriveSystem(NonlinearSystem):
             Jacobian of measurement model
     """
 
-    def __init__(self, dt, lambda_, axle_length, motion_noise_cov, measurement_noise_cov, reduced=False):
+    def __init__(self, dt: float, lambda_: float, axle_length: float, 
+                 motion_noise_cov: np.ndarray, measurement_noise_cov: np.ndarray):
         """
         Initialize the DDR system model.
         
@@ -46,8 +44,6 @@ class DifferentialDriveSystem(NonlinearSystem):
                 Conversion factor from wheel control input to robot linear/angular velocity
             axle_length: float
                 Distance between the wheels
-            reduced: bool
-                If True, use reduced measurement model (wheel encoders only), else full model
             motion_noise_cov: np.ndarray
                 Process noise covariance
             measurement_noise_cov: np.ndarray
@@ -55,7 +51,6 @@ class DifferentialDriveSystem(NonlinearSystem):
         """
         self.lambda_ = lambda_
         self.axle_length = axle_length
-        self.reduced = reduced
         
         super().__init__(
             motion_model=self.motion_model,
@@ -70,153 +65,108 @@ class DifferentialDriveSystem(NonlinearSystem):
     # -------------------------------------------------------------
     #   NONLINEAR MOTION MODEL  (g)
     # -------------------------------------------------------------
-    def motion_model(self, x, u):
+    def motion_model(self, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         """
         DDR motion model:
-            px'    = px + dt * v * cos(theta)
-            py'    = py + dt * v * sin(theta)
-            theta' = theta - dt * omega
-            v'     = lambda_/2 * (ur + ul)
-            omega' = lambda_/(axle_length) * (ur - ul)
+            px'    = px + dt * lambda_/2 * (ur + ul) * cos(theta)
+            py'    = py + dt * lambda_/2 * (ur + ul) * sin(theta)
+            theta' = theta - dt * lambda_/(axle_length) * (ur - ul)
         
         Parameters
         ----------
             x: np.ndarray
                 Current state vector [px, py, theta, v, omega]
             u: np.ndarray
-                Control input vector [ur, ul]
+                Control input vector [ur, ul], i.e. the odometry readings
         
         Returns
         -------
             np.ndarray
                 Predicted next state vector
         """
-        px, py, theta, v, omega = x
+        px, py, theta = x
         ur, ul = u
 
-        px_new = px + self.dt * v * np.cos(theta)
-        py_new = py + self.dt * v * np.sin(theta)
-        theta_new = theta - self.dt * omega
-        v_new = self.lambda_ * (ur + ul) / 2
-        omega_new = self.lambda_ * (ur - ul) / self.axle_length
+        px_new = px + self.dt * self.lambda_ * (ur + ul) / 2 * np.cos(theta)
+        py_new = py + self.dt * self.lambda_ * (ur + ul) / 2 * np.sin(theta)
+        theta_new = theta - self.dt * self.lambda_ * (ur - ul) / self.axle_length
 
-        return np.array([px_new, py_new, theta_new, v_new, omega_new])
+        return np.array([px_new, py_new, theta_new])
 
     # -------------------------------------------------------------
     #   NONLINEAR MEASUREMENT MODEL  (h)
     # -------------------------------------------------------------
-    def measurement_model(self, x): # TODO: call sensors function ? NO ! It is just the model
+    def measurement_model(self, x: np.ndarray) -> np.ndarray:
         """
         DDR measurement model:
             mpx = px
             mpy = py
             mtheta = theta
-            mur = 1/lambda_ * (v + axle_length/2 * omega)
-            mul = 1/lambda_ * (v - axle_length/2 * omega)
-
-        If reduced=True, only return wheel measurements (no camera):
-            mur = 1/lambda_ * (v + axle_length/2 * omega)
-            mul = 1/lambda_ * (v - axle_length/2 * omega)
         
         Parameters
         ----------
             x: np.ndarray
-                Current state vector [px, py, theta, v, omega]
+                Current state vector [px, py, theta]
         
         Returns
         -------
             np.ndarray
                 Predicted measurement vector
         """
-        if self.reduced:
-            _, _, _, v, omega = x
-
-            mur = 1/self.lambda_ * (v + self.axle_length/2 * omega)
-            mul = 1/self.lambda_ * (v - self.axle_length/2 * omega)
-
-            return np.array([mur, mul])
-        else:
-            mpx, mpy, mtheta, v, omega = x
-
-            mur = 1/self.lambda_ * (v + self.axle_length/2 * omega)
-            mul = 1/self.lambda_ * (v - self.axle_length/2 * omega)
-
-            return np.array([mpx, mpy, mtheta, mur, mul])            
+        return x           
 
     # -------------------------------------------------------------
     #   MOTION MODEL JACOBIAN  (G)
     # -------------------------------------------------------------
-    def motion_jacobian(self, x):
+    def motion_jacobian(self, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         """
         Jacobian of g(x, u) w.r.t. x:
             ∂g/∂x =
-            [ 1   0   -dt*v*sin(theta)   dt*cos(theta)   0 ]
-            [ 0   1    dt*v*cos(theta)   dt*sin(theta)   0 ]
-            [ 0   0          1                 0       -dt ]
-            [ 0   0          0                 0         0 ]
-            [ 0   0          0                 0         0 ]
+            [ 1   0   -dt * lambda_/2 * (ur + ul) * sin(theta) ]
+            [ 0   1    dt * lambda_/2 * (ur + ul) * cos(theta) ]
+            [ 0   0                         1                  ]
         
         Parameters
         ----------
             x: np.ndarray
-                Current state vector [px, py, theta, v, omega]
+                Current state vector [px, py, theta]
+            u: np.ndarray
+                Control input vector [ur, ul], i.e. the odometry readings
         
         Returns
         -------
             np.ndarray
                 Jacobian matrix of the motion model
         """
-        _, _, theta, v, _ = x
+        _, _, theta = x
+        ur, ul = u
 
         G = np.array([
-            [1, 0, -self.dt * v * np.sin(theta), self.dt * np.cos(theta), 0],
-            [0, 1,  self.dt * v * np.cos(theta), self.dt * np.sin(theta), 0],
-            [0, 0, 1, 0, -self.dt],
-            [0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0]
+            [1, 0, -self.dt * self.lambda_/2 * (ur + ul) * np.sin(theta)],
+            [0, 1,  self.dt * self.lambda_/2 * (ur + ul) * np.cos(theta)],
+            [0, 0, 1]
         ])
         return G
 
     # -------------------------------------------------------------
     #   MEASUREMENT MODEL JACOBIAN  (H)
     # -------------------------------------------------------------
-    def measurement_jacobian(self, x):
+    def measurement_jacobian(self, x: np.ndarray) -> np.ndarray:
         """
         Jacobian of h(x) w.r.t. x:
             ∂h/∂x =
-            [ 1   0   0       0                   0            ]
-            [ 0   1   0       0                   0            ]
-            [ 0   0   1       0                   0            ]
-            [ 0   0   0   1/lambda_    axle_length/(2*lambda_) ]
-            [ 0   0   0   1/lambda_   -axle_length/(2*lambda_) ]
-
-        If reduced=True, the Jacobian is:
-            ∂h_reduced/∂x =
-            [ 0   0   0   1/lambda_    axle_length/(2*lambda_) ]
-            [ 0   0   0   1/lambda_   -axle_length/(2*lambda_) ]
+            [ 1   0   0 ]
+            [ 0   1   0 ]
+            [ 0   0   1 ]
         
         Parameters
         ----------
             x: np.ndarray
-                Current state vector [px, py, theta, v, omega]
+                Current state vector [px, py, theta]
         
         Returns
         -------
             np.ndarray
                 Jacobian matrix of the measurement model
         """
-        if self.reduced:
-            H_reduced = np.array([
-                [0, 0, 0, 1/self.lambda_,  self.axle_length/(2*self.lambda_)],
-                [0, 0, 0, 1/self.lambda_, -self.axle_length/(2*self.lambda_)]
-            ])
-            return H_reduced
-        else:
-            H = np.array([
-                [1, 0, 0, 0, 0],
-                [0, 1, 0, 0, 0],
-                [0, 0, 1, 0, 0],
-                [0, 0, 0, 1/self.lambda_,  self.axle_length/(2*self.lambda_)],
-                [0, 0, 0, 1/self.lambda_, -self.axle_length/(2*self.lambda_)]
-            ])
-            return H
+        return np.eye(3)

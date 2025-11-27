@@ -32,7 +32,7 @@ class ExtendedKalmanFilter:
         Convenience function that performs predict + update.
     """
 
-    def __init__(self, mu0, Sigma0, system: NonlinearSystem):
+    def __init__(self, mu0: np.ndarray, Sigma0: np.ndarray, system: NonlinearSystem):
         """
         Initialize the EKF.
 
@@ -54,7 +54,7 @@ class ExtendedKalmanFilter:
     #                   PREDICTION STEP
     # ---------------------------------------------------------------
 
-    def predict(self, u):
+    def predict(self, u: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
         Perform the EKF prediction step.
         
@@ -84,7 +84,7 @@ class ExtendedKalmanFilter:
     #                   UPDATE STEP
     # ---------------------------------------------------------------
 
-    def update(self, z):
+    def update(self, z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
         Perform the EKF update step.
         
@@ -124,7 +124,7 @@ class ExtendedKalmanFilter:
     #                   FULL EKF STEP
     # ---------------------------------------------------------------
 
-    def step(self, u, z):
+    def step(self, u: np.ndarray, z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
         Convenience function that performs predict + update.
         

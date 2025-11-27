@@ -24,7 +24,7 @@ class NonlinearSystem:
                 Process noise covariance
         R: np.ndarray
             Measurement noise covariance
-        dt (float, optional): 
+        dt: float
             Sampling time if needed by motion model
 
     Methods
@@ -39,7 +39,9 @@ class NonlinearSystem:
             Compute Jacobian of h at state x.
     """
 
-    def __init__(self, motion_model, measurement_model, motion_jacobian, measurement_jacobian, Q, R, dt=None):
+    def __init__(self, motion_model: callable, measurement_model: callable, 
+                 motion_jacobian: callable, measurement_jacobian: callable, 
+                 Q: np.ndarray, R: np.ndarray, dt: float):
         """
         Initialize the nonlinear system model.
 
@@ -57,7 +59,7 @@ class NonlinearSystem:
                 Process noise covariance
             R: np.ndarray
                 Measurement noise covariance
-            dt (float, optional): 
+            dt: float
                 Sampling time if needed by motion model
         """
         self.motion_model = motion_model
@@ -71,7 +73,7 @@ class NonlinearSystem:
 
         self.dt = dt
 
-    def predict_next_state(self, x, u):
+    def predict_next_state(self, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         """
         Predict next state given current state x and control u.
 
@@ -89,7 +91,7 @@ class NonlinearSystem:
         """
         return self.motion_model(x, u)
 
-    def predict_measurement(self, x):
+    def predict_measurement(self, x: np.ndarray) -> np.ndarray:
         """
         Predict measurement given state x
         
@@ -105,7 +107,7 @@ class NonlinearSystem:
         """
         return self.measurement_model(x)
 
-    def motion_model_jac(self, x):
+    def motion_model_jac(self, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         """
         Compute Jacobian of motion model at state x.
         
@@ -113,15 +115,17 @@ class NonlinearSystem:
         ----------
             x: np.ndarray
                 Current state vector
+            u: np.ndarray
+                Control input vector
         
         Returns
         -------
             np.ndarray
                 Jacobian matrix of motion model
         """
-        return self.motion_jacobian(x)
+        return self.motion_jacobian(x, u)
 
-    def measurement_model_jac(self, x):
+    def measurement_model_jac(self, x: np.ndarray) -> np.ndarray:
         """
         Compute Jacobian of measurement model at state x.
 
@@ -137,7 +141,7 @@ class NonlinearSystem:
         """
         return self.measurement_jacobian(x)
     
-    def get_process_noise_cov(self):
+    def get_process_noise_cov(self) -> np.ndarray:
         """
         Get process noise covariance matrix Q.
 
@@ -148,7 +152,7 @@ class NonlinearSystem:
         """
         return self.Q
 
-    def get_measurement_noise_cov(self):
+    def get_measurement_noise_cov(self) -> np.ndarray:
         """
         Get measurement noise covariance matrix R.
 
