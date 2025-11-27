@@ -72,7 +72,7 @@ class ExtendedKalmanFilter:
         """
         mu_pred = self.system.predict_next_state(self.mu, u)
 
-        G = self.system.motion_model_jac(self.mu)
+        G = self.system.motion_model_jac(self.mu, u)
         Sigma_pred = G @ self.Sigma @ G.T + self.system.get_process_noise_cov()
 
         self.mu = mu_pred
