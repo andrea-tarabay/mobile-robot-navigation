@@ -72,8 +72,9 @@ class ExtendedKalmanFilter:
         """
         mu_pred = self.system.predict_next_state(self.mu, u)
 
+        Q = self.system.get_process_noise_cov()
         G = self.system.motion_model_jac(self.mu, u)
-        Sigma_pred = G @ self.Sigma @ G.T + self.system.get_process_noise_cov()
+        Sigma_pred = G @ self.Sigma @ G.T + Q
 
         self.mu = mu_pred
         self.Sigma = Sigma_pred
@@ -103,8 +104,9 @@ class ExtendedKalmanFilter:
         z_pred = self.system.predict_measurement(self.mu)
         i = z - z_pred
 
+        R = self.system.get_measurement_noise_cov()
         H = self.system.measurement_model_jac(self.mu)
-        S = H @ self.Sigma @ H.T + self.system.get_measurement_noise_cov()
+        S = H @ self.Sigma @ H.T + R
 
         K = self.Sigma @ H.T @ np.linalg.inv(S) # TODO: use solve for numerical stability
 
@@ -112,8 +114,8 @@ class ExtendedKalmanFilter:
         mu_new = self.mu + K @ i
 
         # Update covariance using Joseph form for numerical stability
-        I = np.eye(self.Sigma.shape[0]) # TODO: understand if this is necessary
-        Sigma_new = (I - K @ H) @ self.Sigma @ (I - K @ H).T + K @ self.system.get_measurement_noise_cov() @ K.T
+        I = np.eye(self.Sigma.shape[0])
+        Sigma_new = (I - K @ H) @ self.Sigma @ (I - K @ H).T + K @ R @ K.T
 
         self.mu = mu_new
         self.Sigma = Sigma_new
