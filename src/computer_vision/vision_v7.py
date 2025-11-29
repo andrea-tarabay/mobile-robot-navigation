@@ -128,9 +128,6 @@ class Vision:
             "robot_mask": None,
         }
 
-        # historique des poses pour export (tests Kalman, etc.)
-        self.pose_history = []
-
         base = os.path.dirname(os.path.abspath(__file__))
         self.IMGS = os.path.join(base, "images")
 
@@ -223,22 +220,6 @@ class Vision:
         return self.robot_state
 
     # -----------------------------------------------------
-    def _record_pose(self, st):
-        """
-        Stocke (x, y, theta) dans l'historique dès que le robot est trouvé.
-        Utilise la version lissée si dispo, sinon la mesure brute.
-        """
-        if st is None or not st.get("found"):
-            return
-        center = st.get("smooth_center") or st.get("center")
-        theta = st.get("smooth_theta")
-        if theta is None:
-            theta = st.get("theta")
-        if center is None or theta is None:
-            return
-        self.pose_history.append((float(center[0]), float(center[1]), float(theta)))
-
-    # -----------------------------------------------------
     def blur_robot(self, frame, state):
         """
         Floute le robot de façon proportionnelle à sa taille pour qu'il disparaisse des obstacles.
@@ -254,8 +235,7 @@ class Vision:
         mask_area = cv2.countNonZero(mask)
         est_radius = int(max(15, 3.0 * np.sqrt(mask_area / np.pi)))  # 3x rayon approx
 
-        #ksize = max(3, 2 * est_radius + 1)
-        ksize = int(0.5 * est_radius)
+        ksize = max(3, 2 * est_radius + 1)
         k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
         mask = cv2.dilate(mask, k, iterations=1)
 
@@ -358,7 +338,7 @@ class Vision:
             self.poly_params["min_area"] = cv2.getTrackbarPos("MinA", win)
             self.poly_params["max_area"] = cv2.getTrackbarPos("MaxA", win)
 
-            polys, _ = self.process(frame_no_robot, show_debug=False, skip_blur=True, log_pose=False)
+            polys, _ = self.process(frame_no_robot, show_debug=False, skip_blur=True)
 
             dbg = frame_no_robot.copy()
             for poly in polys:
@@ -374,13 +354,13 @@ class Vision:
         cv2.destroyWindow(win)
 
     # -----------------------------------------------------
-    def process(self, frame, show_debug=False, skip_blur=False, log_pose=True):
+    def process(self, frame, show_debug=False, skip_blur=False):
         """
         Pipeline final sur une frame:
-        - detect_robot ( red and green pr les couleurs)
-        - blur_robot pour flouter robot
-        -canny and fermeture morpho pr les trous
-        - air min and max of polygone
+        - detect_robot (couleurs)
+        - blur_robot pour supprimer le robot
+        - canny + fermeture morpho pour boucher les trous (si pas de cache)
+        - contours filtrés par aire => polygones (ou cache si déjà figés)
         """
         st = self.detect_robot(frame)
         frame_clean = frame if skip_blur else self.blur_robot(frame, st)
@@ -391,7 +371,7 @@ class Vision:
         else:
             gray = cv2.cvtColor(frame_clean, cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray, self.canny_params["low"], self.canny_params["high"])
-            edges = strengthen_edges(edges, ksize=4, iterations=4)  # augmente si traits restent séparés
+            edges = strengthen_edges(edges, ksize=3, iterations=1)  # augmente si traits restent séparés
 
             contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             polys = []
@@ -399,15 +379,9 @@ class Vision:
                 a = cv2.contourArea(c)
                 if not (self.poly_params["min_area"] < a < self.poly_params["max_area"]):
                     continue
-
-                epsilon = 0.01 * cv2.arcLength(c, True)  
-                poly = cv2.approxPolyDP(c, epsilon, True)
-                #poly = cv2.approxPolyDP(c, 0.02 * cv2.arcLength(c, True), True)
+                poly = cv2.approxPolyDP(c, 0.02 * cv2.arcLength(c, True), True)
                 pts = [(int(p[0][0]), int(p[0][1])) for p in poly]
                 polys.append(pts)
-
-        if log_pose:
-            self._record_pose(st)
 
         if not show_debug:
             return polys, st
@@ -429,10 +403,10 @@ class Vision:
     def initialize(self, frame):
         """
         Initialise tous les paramètres sur une seule image :
-        1 robot color
-        2) blur 
+        1) couleurs robot
+        2) blur robot (automatique)
         3) Canny
-        4) polygones detection
+        4) polygones
         """
         self.init_colors(frame)
         # après couleurs, je détecte + blur pour préparer les trackbars suivantes
@@ -442,29 +416,9 @@ class Vision:
         self.init_polygons(frame_clean)
 
         # je fige les polygones dès l'init pour ne plus les recalculer ensuite
-        polys, _ = self.process(frame, show_debug=False, skip_blur=False, log_pose=False)
+        polys, _ = self.process(frame, show_debug=False, skip_blur=False)
         self.static_polys = list(polys)
-        print("[INFO] Initialisation terminé ( couleurs + Canny + polygones figé).")
-
-    # -----------------------------------------------------
-    def get_pose_array(self, as_numpy=True, clear=False):
-        """
-        Retourne l'historique des poses sous forme de liste ou np.ndarray (n x 3).
-        Utiliser clear=True pour vider l'historique après lecture.
-        """
-        if as_numpy:
-            data = np.array(self.pose_history, dtype=np.float32)
-            if data.size == 0:
-                data = data.reshape(0, 3)
-        else:
-            data = self.pose_history
-        if clear:
-            self.pose_history = []
-        return data
-
-    def reset_pose_history(self):
-        """Vide manuellement l'historique des poses."""
-        self.pose_history = []
+        print("[INFO] Initialisation terminée (couleurs + Canny + polygones figés).")
 
 
 # =========================================================
@@ -481,8 +435,8 @@ if __name__ == "__main__":
     """
     vision = Vision()
     show_debug = True           # mettre False si un autre module consomme juste les données
-    mode_image = True           # False pour webcam
-    image_name = "table10.jpg"   # change le nom si nécessaire
+    mode_image = False           # False pour webcam
+    image_name = "table7.jpg"   # change le nom si nécessaire
 
     if mode_image:
         frame0 = vision.load(image_name)
