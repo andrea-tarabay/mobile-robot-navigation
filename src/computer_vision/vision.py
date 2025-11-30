@@ -267,8 +267,7 @@ class Vision:
     def init_colors(self, frame):
         """Trackbars pour Hmin/Hmax rouge/vert + aires min/max avec aperçu masques."""
         win = "INIT COLORS"
-        cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(win, 1280, 720)
+        cv2.namedWindow(win)
         cv2.createTrackbar("R_hmin", win, self.color_params["R_hmin"], 179, lambda x: None)
         cv2.createTrackbar("R_hmax", win, self.color_params["R_hmax"], 179, lambda x: None)
         cv2.createTrackbar("G_hmin", win, self.color_params["G_hmin"], 179, lambda x: None)
@@ -317,14 +316,7 @@ class Vision:
             cv2.putText(dbg, f"Amax={int(self.robot_area['max'])}", (90, 140),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 2)
 
-            h, w = dbg.shape[:2]
-            if hasattr(cv2, "getWindowImageRect"):
-                _, _, win_w, win_h = cv2.getWindowImageRect(win)
-            else:
-                win_w, win_h = w, h
-            scale = min(win_w / w, win_h / h)
-            disp = cv2.resize(dbg, (max(1, int(w * scale)), max(1, int(h * scale))))
-            cv2.imshow(win, disp)
+            cv2.imshow(win, dbg)
             k = cv2.waitKey(1) & 0xFF
             if k in [13, ord(' ')]:  # ENTER / espace
                 break
@@ -336,8 +328,7 @@ class Vision:
     def init_canny(self, frame_no_robot):
         """Trackbars Canny avec aperçu edges (pas de polylines)."""
         win = "INIT CANNY"
-        cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(win, 1280, 720)
+        cv2.namedWindow(win)
         cv2.createTrackbar("Low", win, self.canny_params["low"], 255, lambda x: None)
         cv2.createTrackbar("High", win, self.canny_params["high"], 255, lambda x: None)
 
@@ -346,14 +337,7 @@ class Vision:
             low = cv2.getTrackbarPos("Low", win)
             high = cv2.getTrackbarPos("High", win)
             edges = cv2.Canny(gray, low, high)
-            h, w = edges.shape[:2]
-            if hasattr(cv2, "getWindowImageRect"):
-                _, _, win_w, win_h = cv2.getWindowImageRect(win)
-            else:
-                win_w, win_h = w, h
-            scale = min(win_w / w, win_h / h)
-            disp = cv2.resize(edges, (max(1, int(w * scale)), max(1, int(h * scale))))
-            cv2.imshow(win, disp)
+            cv2.imshow(win, edges)
             k = cv2.waitKey(1) & 0xFF
             if k in [13, ord(' ')]:
                 self.canny_params["low"], self.canny_params["high"] = low, high
@@ -366,8 +350,7 @@ class Vision:
     def init_polygons(self, frame_no_robot):
         """Trackbars min/max area avec aperçu polygones sur l'image (robot déjà blur)."""
         win = "INIT POLYGONS"
-        cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(win, 1280, 720)
+        cv2.namedWindow(win)
         cv2.createTrackbar("MinA", win, self.poly_params["min_area"], 50000, lambda x: None)
         cv2.createTrackbar("MaxA", win, self.poly_params["max_area"], 80000, lambda x: None)
 
@@ -381,14 +364,7 @@ class Vision:
             for poly in polys:
                 pts = np.array(poly, dtype=np.int32)
                 cv2.polylines(dbg, [pts], True, (0, 255, 0), 2)
-            h, w = dbg.shape[:2]
-            if hasattr(cv2, "getWindowImageRect"):
-                _, _, win_w, win_h = cv2.getWindowImageRect(win)
-            else:
-                win_w, win_h = w, h
-            scale = min(win_w / w, win_h / h)
-            disp = cv2.resize(dbg, (max(1, int(w * scale)), max(1, int(h * scale))))
-            cv2.imshow(win, disp)
+            cv2.imshow(win, dbg)
 
             k = cv2.waitKey(1) & 0xFF
             if k in [13, ord(' ')]:
