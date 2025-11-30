@@ -103,11 +103,11 @@ def strengthen_edges(edges, ksize=3, iterations=1):
 class Vision:
     def __init__(self):
         # seuils couleurs robot (HSV)
-        self.color_params = {"R_hmin": 170, "R_hmax": 10, "G_hmin": 40, "G_hmax": 90}
+        self.color_params = {"R_hmin": 165, "R_hmax": 15, "G_hmin": 40, "G_hmax": 90}
         # seuils Canny
-        self.canny_params = {"low": 60, "high": 140}
+        self.canny_params = {"low":70, "high": 50}
         # aires obstacles
-        self.poly_params = {"min_area": 300, "max_area": 20000}
+        self.poly_params = {"min_area": 20000, "max_area": 220000}
         # aires robot (pour filtrer les bulles)
         self.robot_area = {"min": 20, "max": 8000}
 
@@ -352,7 +352,7 @@ class Vision:
         win = "INIT POLYGONS"
         cv2.namedWindow(win)
         cv2.createTrackbar("MinA", win, self.poly_params["min_area"], 50000, lambda x: None)
-        cv2.createTrackbar("MaxA", win, self.poly_params["max_area"], 80000, lambda x: None)
+        cv2.createTrackbar("MaxA", win, self.poly_params["max_area"], 400000, lambda x: None)
 
         while True:
             self.poly_params["min_area"] = cv2.getTrackbarPos("MinA", win)
@@ -391,7 +391,11 @@ class Vision:
         else:
             gray = cv2.cvtColor(frame_clean, cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray, self.canny_params["low"], self.canny_params["high"])
-            edges = strengthen_edges(edges, ksize=4, iterations=4)  # augmente si traits restent séparés
+            edges = strengthen_edges(edges, ksize=3, iterations=3)  #ici augmente si traits restent séparés
+            edges = cv2.dilate(edges, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=2)
+
+            #cv2.imshow("CANNY EPAISSI", edges)
+            #cv2.waitKey(1)
 
             contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             polys = []
@@ -400,7 +404,8 @@ class Vision:
                 if not (self.poly_params["min_area"] < a < self.poly_params["max_area"]):
                     continue
 
-                epsilon = 0.01 * cv2.arcLength(c, True)  
+                epsilon = 0.016 * cv2.arcLength(c, True) #ici la polygone 
+
                 poly = cv2.approxPolyDP(c, epsilon, True)
                 #poly = cv2.approxPolyDP(c, 0.02 * cv2.arcLength(c, True), True)
                 pts = [(int(p[0][0]), int(p[0][1])) for p in poly]
@@ -481,7 +486,7 @@ if __name__ == "__main__":
     """
     vision = Vision()
     show_debug = True           # mettre False si un autre module consomme juste les données
-    mode_image = True           # False pour webcam
+    mode_image = False           # False pour webcam
     image_name = "table10.jpg"   # change le nom si nécessaire
 
     if mode_image:

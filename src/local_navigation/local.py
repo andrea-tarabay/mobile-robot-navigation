@@ -1,5 +1,3 @@
-import os
-import sys
 import math
 from statistics import mean
 import pandas as pd
@@ -7,10 +5,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
-sys.path.insert(0, os.path.join(os.getcwd(), 'src'))
-
-from local_occupancy import sensor_measurements, sensor_distances
-from local_occupancy import thymio_coords, sensor_pos_from_center, sensor_angles
+from .local_occupancy import (
+    sensor_measurements,
+    sensor_distances,
+    thymio_coords,
+    sensor_pos_from_center,
+    sensor_angles,
+)
 
 
 
@@ -407,5 +408,4 @@ class LocalNavigator:
         # 5) Convert back to WORLD frame
         virt_world = self.robot_to_world(pose, virt_robot)
         return virt_world
-
 
