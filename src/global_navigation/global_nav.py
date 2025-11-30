@@ -212,7 +212,7 @@ def global_nav(vision,radius,w,h,img):
         pts = np.array(poly, dtype=np.int32)
         cv2.polylines(out, [pts], True, (0, 0, 255), 2)
 
-    cv2.imshow("Obstacles + buffer", out)
+    #cv2.imshow("Obstacles + buffer", out)
     cv2.imwrite("inflate_test.png", out)
 
     # définir start / goal (temporaire)
@@ -264,12 +264,16 @@ def global_nav(vision,radius,w,h,img):
                     x2, y2 = map(int, path[i+1])
                     cv2.line(path_img, (x1, y1), (x2, y2), (255, 0, 0), 3)
 
-                cv2.imshow("Path", path_img)
+                #cv2.imshow("Path", path_img)
                 cv2.imwrite("path_result.png", path_img)
                 return path
 
     else:
             print("[GLOBAL] Goal non valide, coordonnées =", goal,)
+
+
+    cv2.destroyAllWindows()
+
 
 
 
@@ -349,7 +353,7 @@ def global_nav(vision,radius,w,h,img):
     #     pts = np.array(poly, dtype=np.int32)
     #     cv2.polylines(out, [pts], True, (0, 0, 255), 2)
 
-    # cv2.imshow("Obstacles + buffer", out)
+    # #cv2.imshow("Obstacles + buffer", out)
     # cv2.imwrite("inflate_test.png", out)
 
     # # définir start / goal (temporaire)
@@ -402,7 +406,7 @@ def global_nav(vision,radius,w,h,img):
     #                 x2, y2 = map(int, path[i+1])
     #                 cv2.line(path_img, (x1, y1), (x2, y2), (255, 0, 0), 3)
 
-    #             cv2.imshow("Path", path_img)
+    #             #cv2.imshow("Path", path_img)
     #             cv2.imwrite("path_result.png", path_img)
     # else:
     #         print("[GLOBAL] Goal non valide, coordonnées =", goal,)
