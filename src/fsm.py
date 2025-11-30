@@ -2,7 +2,6 @@ import threading
 import queue
 import numpy as np
 
-import random
 import time
 
 class Fsm(threading.Thread):

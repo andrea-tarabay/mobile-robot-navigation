@@ -1,11 +1,15 @@
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
+from PIL import Image, ImageTk
+import cv2
+import time
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.patches import Ellipse
 
 from fsm import Fsm  # Your worker thread class
+from computer_vision.cv_init_thread import CVInitThread  # Your CV init thread class
 
 
 class Gui(tk.Tk):
@@ -32,16 +36,18 @@ class Gui(tk.Tk):
 
         self.update_rate_ms = update_rate_ms  # refresh rate for plot updates
 
-        # --------------------------- Thread Management ---------------------------- #
-
+        # ------------------------ Thread initialization -------------------------- #
+        self.thread_init_cv = None  # Thread for computer vision initialization
         # Fsm thread must expose a thread-safe queue named ekf_queue
-        self.thread = None
+        self.thread_fsm = None
 
-        # --------------------------- UI Elements --------------------------------- #
-
-        # --- Top frame with buttons ---
+        # ------------------------ Top frame with buttons -------------------------- #
         top_frame = ttk.Frame(self)
         top_frame.pack(side="top", fill="x", padx=8, pady=8)
+
+        # -------------------------------- Buttons --------------------------------- #
+        self.init_btn = ttk.Button(top_frame, text="Initialize CV", command=self.on_initialize)
+        self.init_btn.pack(side="left", padx=(0, 6))
 
         self.start_btn = ttk.Button(top_frame, text="Start", command=self.on_start)
         self.start_btn.pack(side="left", padx=(0, 6))
@@ -55,13 +61,25 @@ class Gui(tk.Tk):
         self.stop_btn = ttk.Button(top_frame, text="Stop", command=self.on_stop)
         self.stop_btn.pack(side="left")
 
-        # Set initial button state
-        self._set_buttons_initial()
+        # Button state at startup
+        self._set_buttons_wait_for_init()
 
-        # Display latest EKF text output
-        self.label = ttk.Label(self, text="Waiting for data...", font=("TkDefaultFont", 18))
+        # -------------------------- Text Output ------------------------------- #
+        # Display latest text output
+        self.label = ttk.Label(self, text="Waiting for initialization...", font=("TkDefaultFont", 18))
         self.label.pack(padx=10, pady=10)
 
+        # -------------------------- CV Image Output ------------------------------- #
+        # --- Frame reserved for CV image ---
+        cv_frame = ttk.Frame(self)
+        cv_frame.pack(side="top", fill="both", expand=False, padx=8, pady=(0,8))
+
+        # Label inside the frame to hold the image
+        self.cv_img_tk = None  # Placeholder for the Tkinter image
+        self.cv_image_label = tk.Label(cv_frame, image=self.cv_img_tk)
+        self.cv_image_label.pack()
+
+        # -------------------------- Plot Output ------------------------------- #
         # --- Plot frame (fills the rest) ---
         plot_frame = ttk.Frame(self)
         plot_frame.pack(side="top", fill="both", expand=True, padx=8, pady=(0, 8))
@@ -84,11 +102,42 @@ class Gui(tk.Tk):
     #                             Button Callbacks                               #
     # -------------------------------------------------------------------------- #
 
+    def on_initialize(self):
+        """Start computer vision initialization."""
+        self.init_btn.config(state="disabled")
+        self.label.config(text="Initializing computer vision...")
+
+        # Create and start the CV init thread
+        self.cv_thread = CVInitThread(callback=self._on_init_done)
+        self.cv_thread.start()
+
+    def _on_init_done(self, frame=None, error=None):
+        """Called when CV initialization finishes or fails."""
+        if error:
+            self.label.config(text=f"Init failed: {error}")
+            self.init_btn.config(state="normal")
+            return
+
+        self.label.config(text="Computer vision initialized.")
+        self._set_buttons_start_up()  # enable Start/Stop buttons
+
+        if frame is not None:
+            # Convert BGR (OpenCV) to RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(frame_rgb)
+            img.thumbnail((400, 300))  # scale if needed
+
+            # Store reference to avoid garbage collection
+            self.cv_img_tk = ImageTk.PhotoImage(img)
+
+            # Update the label
+            self.cv_image_label.config(image=self.cv_img_tk)
+
     def on_start(self):
         """Start the FSM worker thread."""
-        if self.thread is None or not self.thread.is_alive():
-            self.thread = Fsm(update_callback=self._update_ekf_plot)   # <-- create a new one
-            self.thread.start()
+        if self.thread_fsm is None or not self.thread_fsm.is_alive():
+            self.thread_fsm = Fsm(update_callback=self._update_ekf_plot)   # <-- create a new one
+            self.thread_fsm.start()
             print("Thread started.")
             self._set_buttons_running()
         else:
@@ -96,47 +145,77 @@ class Gui(tk.Tk):
 
     def on_stop(self):
         """Signal the FSM thread to stop."""
-        if self.thread and self.thread.is_alive():
-            self.thread.stop()
+        if self.thread_fsm and self.thread_fsm.is_alive():
+            self.thread_fsm.stop()
             print("Stop signal sent.")
         else:
             print("No running thread to stop.")
         self._set_buttons_stopped()
 
     def on_pause(self):
-        if self.thread and self.thread.is_alive():
-            self.thread.pause()
+        if self.thread_fsm and self.thread_fsm.is_alive():
+            self.thread_fsm.pause()
             print("Paused.")
             self._set_buttons_paused()
 
     def on_resume(self):
-        if self.thread and self.thread.is_alive():
-            self.thread.resume()
+        if self.thread_fsm and self.thread_fsm.is_alive():
+            self.thread_fsm.resume()
             print("Resumed.")
             self._set_buttons_running()
 
     # --------------------------- Button state logic ---------------------------- #
 
-    def _set_buttons_initial(self):
+    def _set_buttons_wait_for_init(self):
+        # Only initialization allowed
+        self.init_btn.config(state="normal")
+        self.start_btn.config(state="disabled")
+        self.stop_btn.config(state="disabled")
+        self.pause_btn.config(state="disabled")
+        self.resume_btn.config(state="disabled")
+
+
+    def _set_buttons_start_up(self):
+        self.init_btn.config(state="disabled")
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
         self.pause_btn.config(state="disabled")
         self.resume_btn.config(state="disabled")
 
     def _set_buttons_running(self):
+        self.init_btn.config(state="disabled")
         self.start_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
         self.pause_btn.config(state="normal")
         self.resume_btn.config(state="disabled")
 
     def _set_buttons_paused(self):
+        self.init_btn.config(state="disabled")
         self.start_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
         self.pause_btn.config(state="disabled")
         self.resume_btn.config(state="normal")
 
     def _set_buttons_stopped(self):
-        self._set_buttons_initial()
+        self._set_buttons_start_up()
+
+
+    # -------------------------------------------------------------------------- #
+    #                           CV Image Display                                 #
+    # -------------------------------------------------------------------------- #
+    
+    def _display_frame(self, frame):
+        """
+        Display a BGR OpenCV frame in the Tkinter GUI.
+        """
+        # Convert BGR to RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(frame_rgb)
+        img.thumbnail((400, 300))  # scale if needed
+
+        # Store reference to avoid garbage collection
+        self.cv_img_tk = ImageTk.PhotoImage(img)
+        self.cv_image_label.config(image=self.cv_img_tk)
 
     # -------------------------------------------------------------------------- #
     #                              Matplotlib Setup                               #
@@ -148,8 +227,8 @@ class Gui(tk.Tk):
         self.ax.set_title("EKF Mean & Covariance")
         self.ax.set_xlabel("x (pixels)")
         self.ax.set_ylabel("y (pixels, downward)")
-        self.ax.set_xlim(0, 500)
-        self.ax.set_ylim(0, 500)
+        self.ax.set_xlim(0, 100)
+        self.ax.set_ylim(0, 100)
 
         # Make origin top-left like an image
         self.ax.invert_yaxis()
@@ -233,3 +312,11 @@ class Gui(tk.Tk):
 
         self.ax.legend()
         self.canvas.draw()
+
+    # -------------------------------------------------------------------------- #
+    #                               Label Update                                 #
+    # -------------------------------------------------------------------------- #
+
+    def update_label(self, msg: str):
+        """Thread-safe update of the status label."""
+        self.after(0, lambda: self.label.config(text=msg))
