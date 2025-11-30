@@ -490,16 +490,7 @@ if __name__ == "__main__":
         res = vision.process(frame0, show_debug=show_debug)
         if show_debug:
             _, _, dbg = res
-            cv2.namedWindow("RESULT", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("RESULT", 1280, 720)
-            h, w = dbg.shape[:2]
-            if hasattr(cv2, "getWindowImageRect"):
-                _, _, win_w, win_h = cv2.getWindowImageRect("RESULT")
-            else:
-                win_w, win_h = w, h
-            scale = min(win_w / w, win_h / h)
-            disp = cv2.resize(dbg, (max(1, int(w * scale)), max(1, int(h * scale))))
-            cv2.imshow("RESULT", disp)
+            cv2.imshow("RESULT", dbg)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
         else:
@@ -542,10 +533,6 @@ if __name__ == "__main__":
             raise RuntimeError("Impossible de lire la webcam.")
         vision.initialize(frame0)
 
-        if show_debug:
-            cv2.namedWindow("RESULT", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("RESULT", 1280, 720)
-
         while True:
             ok, frame = cap.read()
             if not ok:
@@ -553,14 +540,7 @@ if __name__ == "__main__":
             res = vision.process(frame, show_debug=show_debug)
             if show_debug:
                 _, _, dbg = res
-                h, w = dbg.shape[:2]
-                if hasattr(cv2, "getWindowImageRect"):
-                    _, _, win_w, win_h = cv2.getWindowImageRect("RESULT")
-                else:
-                    win_w, win_h = w, h
-                scale = min(win_w / w, win_h / h)
-                disp = cv2.resize(dbg, (max(1, int(w * scale)), max(1, int(h * scale))))
-                cv2.imshow("RESULT", disp)
+                cv2.imshow("RESULT", dbg)
                 if cv2.waitKey(1) & 0xFF in [27, ord('q')]:
                     break
             else:
