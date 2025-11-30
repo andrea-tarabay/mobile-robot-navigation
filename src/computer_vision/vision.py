@@ -481,7 +481,7 @@ if __name__ == "__main__":
     """
     vision = Vision()
     show_debug = True           # mettre False si un autre module consomme juste les données
-    mode_image = False           # False pour webcam
+    mode_image = True           # False pour webcam
     image_name = "table10.jpg"   # change le nom si nécessaire
 
     if mode_image:
@@ -498,38 +498,9 @@ if __name__ == "__main__":
             print("Robot:", st)
             print("Obstacles:", len(polys))
     else:
-        # réglages capture (adapter si besoin)
-        DESIRED_W, DESIRED_H = 1920, 1080
-        DESIRED_FPS = 60
-        FOURCC = "MJPG"
-        AUTOFOCUS = 0       # 0=off, 1=on (si supporté)
-        ISO = None          # mettez une valeur si supporté
-        EXPOSURE = None     # mettez une valeur si supporté (souvent négatif)
-
         cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            raise RuntimeError("Impossible d'ouvrir la webcam.")
-
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*FOURCC))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, DESIRED_W)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, DESIRED_H)
-        cap.set(cv2.CAP_PROP_FPS, DESIRED_FPS)
-        #cap.set(cv2.CAP_PROP_AUTOFOCUS, AUTOFOCUS)
-        #cap.set(cv2.CAP_PROP_ISO_SPEED, ISO)
-        #cap.set(cv2.CAP_PROP_EXPOSURE, EXPOSURE)
-
-        print(f"[INFO] FourCC demandé: {FOURCC}")
-        rw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        rh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        got_fps = cap.get(cv2.CAP_PROP_FPS)
-        print(f"[INFO] Capture resolution ciblée: {rw}x{rh}")
-        if got_fps > 0:
-            print(f"[INFO] Capture FPS cible: {got_fps:.1f}")
-        if hasattr(cv2, "CAP_PROP_AUTOFOCUS"):
-            print(f"[INFO] Autofocus={bool(cap.get(cv2.CAP_PROP_AUTOFOCUS))}")
         ok, frame0 = cap.read()
         if not ok:
-            cap.release()
             raise RuntimeError("Impossible de lire la webcam.")
         vision.initialize(frame0)
 
