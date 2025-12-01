@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from shapely.geometry import Polygon, Point
 
 
 # -----------------------------
@@ -158,35 +159,48 @@ class ComputerVisionCore:
         }
     
     @staticmethod
-    def detect_polygons(frame: np.ndarray, min_area: int, cany_low=100, cany_high=200):
+    def detect_obstacles(frame: np.ndarray, min_area: int, canny_low=100, canny_high=200):
         """
         Detect polygons in the frame using Canny and contour approximation.
+        Removes polygons containing the robot position.
 
         Returns:
-            List of polygons (each polygon is a list of (x,y) points)
+            List of polygons (each polygon is a Shapely Polygon)
         """
         frame_copy = frame.copy()
         robot_pose = ComputerVisionCore.detect_robot(frame_copy)
 
+        # If robot found, create a list of points to exclude
+        not_obstacle_points = []
+        if robot_pose["found"]:
+            not_obstacle_points.append(Point(robot_pose["center"]))
+            if robot_pose["red_center"]:
+                not_obstacle_points.append(Point(robot_pose["red_center"]))
+            if robot_pose["green_center"]:
+                not_obstacle_points.append(Point(robot_pose["green_center"]))
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5,5), 0)
 
-        edges = cv2.Canny(blur, cany_low, cany_high)
+        edges = cv2.Canny(blur, canny_low, canny_high)
         edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, 
                                  cv2.getStructuringElement(cv2.MORPH_RECT, (5,5)))
         cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        polygons = []
+        obstacles = []
         for c in cnts:
             area = cv2.contourArea(c)
             if area < min_area:
                 continue
             hull = cv2.convexHull(c)
             if len(hull) >= 3:  # at least a triangle
-                poly = [(pt[0][0], pt[0][1]) for pt in hull]
-                polygons.append(poly)
+                poly = Polygon([(pt[0][0], pt[0][1]) for pt in hull])
+                # Skip polygon if it contains any "not_obstacle" points
+                if any(poly.contains(p) for p in not_obstacle_points):
+                    continue
+                obstacles.append(poly)
 
-        return polygons
+        return obstacles
     
     @staticmethod
     def init_canny(frame, sigma=0.33):

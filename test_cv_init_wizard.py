@@ -5,7 +5,7 @@ from src.gui.init_vision_wizard import InitVisionWizard
 import cv2
 
 # Load an image/frame for calibration
-frame = cv2.imread("vision_live_output_pour_mehdi.jpg")
+frame = cv2.imread("vision_live_output_pour_jon.jpg")
 
 # Initialize params and CV object
 params = VisionParamsManager()

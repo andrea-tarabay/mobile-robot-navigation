@@ -142,13 +142,13 @@ class InitVisionWizard(tk.Toplevel):
             frame_copy = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
 
         elif self.steps[self.step] == "Polygons":
-            polys = ComputerVisionCore.detect_polygons(frame_copy, 
+            obstacles = ComputerVisionCore.detect_obstacles(frame_copy, 
                                                        self.params.poly_params.get("min_area"),
                                                        self.params.canny_params.get("low"),
                                                        self.params.canny_params.get("high"))
 
-            for poly in polys:
-                pts = np.array(poly, dtype=np.int32)
+            for poly in obstacles:
+                pts = np.array(poly.exterior.coords, dtype=np.int32)
                 cv2.polylines(frame_copy, [pts], True, (0,255,0),2)
 
         # --- Resize & center ---
