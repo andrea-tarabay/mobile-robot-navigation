@@ -5,6 +5,7 @@ import queue
 import time
 import cv2
 import numpy as np
+import os
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.patches import Ellipse
@@ -62,6 +63,10 @@ class Gui(tk.Tk):
         top_frame = ttk.Frame(self)
         top_frame.pack(side="top", fill="x", padx=8, pady=8)
 
+        # Status label
+        self.status_label = ttk.Label(self, text="Ready", font=("TkDefaultFont", 14))
+        self.status_label.pack(padx=10, pady=6)
+
         # Buttons
         self.init_btn = ttk.Button(top_frame, text="Initialize CV", command=self.on_initialize)
         self.init_btn.pack(side="left", padx=(0, 6))
@@ -80,10 +85,6 @@ class Gui(tk.Tk):
 
         # Button state at startup
         self._set_buttons_wait_for_init()
-
-        # Status label
-        self.status_label = ttk.Label(self, text="Ready", font=("TkDefaultFont", 14))
-        self.status_label.pack(padx=10, pady=6)
 
         # CV image frame (above plot)
         cv_frame = ttk.Frame(self)
@@ -113,17 +114,17 @@ class Gui(tk.Tk):
     # Buttons state helpers
     # -------------------------
     def _set_buttons_wait_for_init(self):
-        # Only initialization allowed
+        """At application start:"""
         self.init_btn.config(state="normal")
-        self.start_btn.config(state="disabled")
+        self._check_params_file()
         self.stop_btn.config(state="disabled")
         self.pause_btn.config(state="disabled")
         self.resume_btn.config(state="disabled")
 
     def _set_buttons_ready(self):
         """At application start: Start enabled, others disabled."""
-        self.init_btn.config(state="disabled")
-        self.start_btn.config(state="normal")
+        self.init_btn.config(state="normal")
+        self._check_params_file()
         self.stop_btn.config(state="disabled")
         self.pause_btn.config(state="disabled")
         self.resume_btn.config(state="disabled")
@@ -144,6 +145,19 @@ class Gui(tk.Tk):
 
     def _set_buttons_stopped(self):
         self._set_buttons_ready()
+
+    # -------------------------
+    # Check JSON
+    # -------------------------
+    def _check_params_file(self):
+        """Enable start button if params file exists, otherwise force initialization."""
+        params_file = VisionParamsManager().path
+        if os.path.exists(params_file):
+            self.start_btn.config(state="normal")
+            self.status_label.config(text="Ready to start")
+        else:
+            self.start_btn.config(state="disabled")
+            self.status_label.config(text="Initialization required (no parameters found)")
 
     # -------------------------
     # Button callbacks

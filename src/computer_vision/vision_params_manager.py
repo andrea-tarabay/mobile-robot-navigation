@@ -2,11 +2,16 @@ import json
 import os
 
 # =========================================================
+# CONSTANTS
+# =========================================================
+DEFAULT_FILE = "vision_params.json"
+
+# =========================================================
 # PARAMETER MANAGEMENT
 # =========================================================
 
 class VisionParamsManager:
-    def __init__(self, path="vision_params.json"):
+    def __init__(self, path=DEFAULT_FILE):
         self.path = path
         # defaults
         self.canny_params = {"sigma": 0.33, "low": 70, "high": 50}
