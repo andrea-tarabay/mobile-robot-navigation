@@ -195,14 +195,13 @@ class LocalNavigator:
         return np.array([x_r + dx_w, y_r + dy_w], dtype=float)
 
     def _find_lookahead_point(self, pose, path):
-        x, y, _ = pose
-        path_arr = np.asarray(path, dtype=float)
-        if path_arr.ndim != 2 or path_arr.shape[0] == 0 or path_arr.shape[1] < 2:
+        x, y, theta = pose
+        if path is None or path.shape[0] == 0:
             return None, None
 
         start_idx = self.path_idx
-        end_idx = min(path_arr.shape[0], start_idx + self.cfg.max_lookahead_points)
-        segment = path_arr[start_idx:end_idx]
+        end_idx = min(path.shape[0], start_idx + self.cfg.max_lookahead_points)
+        segment = path[start_idx:end_idx]
         dists2 = (segment[:, 0] - x) ** 2 + (segment[:, 1] - y) ** 2
         k_local = int(np.argmin(dists2))
         k_global = start_idx + k_local
@@ -211,19 +210,18 @@ class LocalNavigator:
         target_idx = k_global
         accum = 0.0
         while (
-            target_idx + 1 < path_arr.shape[0]
-            and accum < self.cfg.lookahead_dist_px
+            target_idx + 1 < path.shape[0]
+            and accum < self.cfg.lookahead_dist_m
             and target_idx - k_global < self.cfg.max_lookahead_points
         ):
-            p0 = path_arr[target_idx]
-            p1 = path_arr[target_idx + 1]
+            p0 = path[target_idx]
+            p1 = path[target_idx + 1]
             step = float(np.linalg.norm(p1 - p0))
             accum += step
             target_idx += 1
 
-        LA_point = path_arr[target_idx]
+        LA_point = path[target_idx]
         return LA_point, k_global
-
 
  
 
@@ -279,13 +277,10 @@ class LocalNavigator:
     
 
     def compute_virtual_goal(self, pose, path, sensor_vals=None):
-        if path is None or len(path) == 0:
+        if not path:                           # None or empty list
             return None, None, None, None
 
         path_arr = np.asarray(path, dtype=float)
-        if path_arr.ndim != 2 or path_arr.shape[0] == 0 or path_arr.shape[1] < 2:
-            return None, None, None, None
-
         LA_world, _ = self._find_lookahead_point(pose, path_arr)
         if LA_world is None:
             return None, None, None, None

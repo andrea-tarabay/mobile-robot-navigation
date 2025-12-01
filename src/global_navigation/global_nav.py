@@ -229,7 +229,7 @@ def global_nav(vision,radius,w,h,img):
     else:
         print("[GLOBAL] Robot non trouvé sur l’image de référence")
 
-    goal  = (1650, 130)
+    goal  = (1650, 1030)
     if outside_obstacle(merged_inflated, goal):
             print("[GLOBAL] Goal valide, coordonnées =", goal)
 
