@@ -4,8 +4,8 @@ from PIL import Image, ImageTk
 import cv2
 import numpy as np
 
-from src.computer_vision.vision_params_manager import VisionParamsManager
-from src.computer_vision.computer_vision import ComputerVisionCore
+from computer_vision.vision_params_manager import VisionParamsManager
+from computer_vision.computer_vision import ComputerVisionCore
 
 # =========================================================
 # INIT VISION WIZARD (Tkinter)

@@ -11,6 +11,8 @@ from matplotlib.patches import Ellipse
 
 from fsm import Fsm  # your existing FSM thread class
 from computer_vision.camera_capture_thread import CameraCaptureThread
+from computer_vision.vision_params_manager import VisionParamsManager
+from gui.init_vision_wizard import InitVisionWizard
 
 
 class Gui(tk.Tk):
@@ -149,14 +151,45 @@ class Gui(tk.Tk):
     def on_initialize(self):
         """Start computer vision initialization."""
         self.init_btn.config(state="disabled")
-        self.status_label.config(text="Initializing computer vision...")
+        self.status_label.config(text="Opening CV initialization wizard...")
 
-        # Here you would start your CV initialization thread
-        print("Simulate CV initialization...")
-        time.sleep(2)  # simulate delay
-        print("CV initialized.")
+        # 1. Capture ONE frame directly from the camera
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            self.status_label.config(text="Camera not found.")
+            self.init_btn.config(state="normal")
+            return
 
-        self.status_label.config(text="CV Initialized")
+        # Warm-up: try to grab a valid frame within 2 seconds
+        start = time.time()
+        frame = None
+        while time.time() - start < 2.0:
+            ok, f = cap.read()
+            if ok and f is not None:
+                # reject dark/black frames
+                if f.mean() > 5:    # more robust than sum != 0
+                    frame = f
+                    break
+            time.sleep(0.03)
+
+        cap.release()
+
+        if frame is None:
+            self.status_label.config(text="Failed to capture a valid frame.")
+            self.init_btn.config(state="normal")
+            return
+
+        # 2. Load parameters manager
+        params = VisionParamsManager()
+
+        # 3. Pass the captured FRAME to the wizard
+        wizard = InitVisionWizard(self, frame, params)  # <-- FIXED
+
+        wizard.grab_set()           # modal window
+        self.wait_window(wizard)    # wait for wizard to finish
+
+        # 4. Show updated UI
+        self.status_label.config(text="CV Initialized!")
         self._set_buttons_ready()
 
     def on_start(self):
