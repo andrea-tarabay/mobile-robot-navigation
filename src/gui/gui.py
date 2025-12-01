@@ -41,7 +41,7 @@ class Gui(tk.Tk):
         self.update_rate_ms = update_rate_ms  # refresh rate for plot updates
 
         # Threads / queues
-        self.camera_frame_queue = queue.Queue(maxsize=1)  # latest frame only
+        self.queue = queue.Queue(maxsize=1)  # latest frame only
         self.camera_thread: CameraCaptureThread | None = None
 
         self.thread_fsm: Fsm | None = None
@@ -210,7 +210,7 @@ class Gui(tk.Tk):
         """Start both the camera capture and the FSM worker."""
         # start camera thread (recreate each time)
         if self.camera_thread is None or not self.camera_thread.is_alive():
-            self.camera_thread = CameraCaptureThread(frame_queue=self.camera_frame_queue, device_index=0)
+            self.camera_thread = CameraCaptureThread(queue=self.queue, device_index=0)
             self.camera_thread.start()
             print("Camera capture started.")
 
@@ -277,14 +277,14 @@ class Gui(tk.Tk):
     def _schedule_camera_poll(self):
         """Schedule the periodic GUI poll to read the latest camera frame from queue."""
         try:
-            frame = self.camera_frame_queue.get_nowait()
+            data = self.queue.get_nowait()
         except queue.Empty:
-            frame = None
+            data = None
 
-        if frame is not None:
+        if data is not None:
             # convert BGR -> RGB, make PhotoImage and update label (main thread only)
             try:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_rgb = cv2.cvtColor(data["frame"], cv2.COLOR_BGR2RGB)
                 pil_img = Image.fromarray(frame_rgb)
                 # resize to a fixed display size or keep original
                 pil_img.thumbnail((640, 480))

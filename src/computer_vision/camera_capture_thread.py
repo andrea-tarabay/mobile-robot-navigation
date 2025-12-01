@@ -13,9 +13,9 @@ class CameraCaptureThread(threading.Thread):
     Background thread that continuously captures frames from a camera device
     and pushes the latest frame to a queue.Queue(maxsize=1). It never touches Tk.
     """
-    def __init__(self, frame_queue: queue.Queue, device_index: int = 0, warmup_timeout: float = 2.0):
+    def __init__(self, queue: queue.Queue, device_index: int = 0, warmup_timeout: float = 2.0, smooth_alpha=0.5):
         super().__init__(daemon=True)
-        self.frame_queue = frame_queue
+        self.queue = queue
         self.device_index = device_index
         self._stop_event = threading.Event()
         self.warmup_timeout = warmup_timeout
@@ -25,6 +25,20 @@ class CameraCaptureThread(threading.Thread):
 
         # Store precomputed obstacles
         self.static_obstacles: list[Polygon] = []
+
+        # EMA smoothing factor
+        self.alpha = smooth_alpha
+
+        # EMA filter state variables
+        self.smoothed_center = None
+        self.smoothed_red = None
+        self.smoothed_green = None
+        self.smoothed_theta = None
+
+        # Safe lock for robot pose
+        self.robot_pose_lock = threading.Lock()
+        self.robot_pose = None  # last smoothed robot pose
+
 
     def stop(self):
         self._stop_event.set()
@@ -44,6 +58,55 @@ class CameraCaptureThread(threading.Thread):
                     return frame
             time.sleep(0.05)
         return None
+    
+    # -------------------------------
+    # Utility: EMA for 2D points
+    # -------------------------------
+    def _smooth_point(self, prev, new):
+        """Exponential smoothing for 2D points."""
+        if new is None:
+            return prev  # keep previous
+        if prev is None:
+            return np.array(new, dtype=float)
+        return self.alpha * np.array(new) + (1 - self.alpha) * prev
+
+    # -------------------------------
+    # Utility: EMA for angle
+    # -------------------------------
+    def _smooth_angle(self, prev, new):
+        """Exponential smoothing for angles, avoiding wrap-around jumps."""
+        if new is None:
+            return prev
+        if prev is None:
+            return new
+        # shortest angular difference
+        diff = np.arctan2(np.sin(new - prev), np.cos(new - prev))
+        return prev + self.alpha * diff
+
+    # -------------------------------
+    # Apply EMA to raw robot detection
+    # -------------------------------
+    def smooth_robot_pose(self, robot):
+        """Apply EMA smoothing to raw robot detection."""
+        if not robot["found"]:
+            return None  # No detection, skip
+
+        # Smooth each attribute
+        self.smoothed_center = self._smooth_point(self.smoothed_center, robot["center"])
+        self.smoothed_red    = self._smooth_point(self.smoothed_red, robot["red_center"])
+        self.smoothed_green  = self._smooth_point(self.smoothed_green, robot["green_center"])
+        self.smoothed_theta  = self._smooth_angle(self.smoothed_theta, robot["theta"])
+
+        # Build smoothed pose
+        smoothed = {
+            "found": True,
+            "center": (int(round(self.smoothed_center[0])), int(round(self.smoothed_center[1]))) if self.smoothed_center is not None else None,
+            "red_center": (int(round(self.smoothed_red[0])), int(round(self.smoothed_red[1]))) if self.smoothed_red is not None else None,
+            "green_center": (int(round(self.smoothed_green[0])), int(round(self.smoothed_green[1]))) if self.smoothed_green is not None else None,
+            "theta": self.smoothed_theta,
+        }
+
+        return smoothed
 
     def run(self):
         cap = cv2.VideoCapture(self.device_index)
@@ -56,24 +119,24 @@ class CameraCaptureThread(threading.Thread):
         first_frame = self._grab_first_valid_frame(cap, self.warmup_timeout)
         if first_frame is not None:
             # Precompute static obstacles
-            first_frame = ComputerVisionCore.detect_obstacles(
+            obstacles = ComputerVisionCore.detect_obstacles(
                 first_frame,
                 min_area=self.params_manager.poly_params["min_area"],
                 canny_low=self.params_manager.canny_params["low"],
                 canny_high=self.params_manager.canny_params["high"]
             )
-            self.static_obstacles = first_frame["obstacles"]
+            self.static_obstacles = obstacles
 
             # Push first valid frame into queue
             try:
-                self.frame_queue.put_nowait(first_frame)
+                self.queue.put_nowait({"frame": first_frame, "robot": None})
             except queue.Full:
                 try:
-                    _ = self.frame_queue.get_nowait()
+                    _ = self.queue.get_nowait()
                 except queue.Empty:
                     pass
                 try:
-                    self.frame_queue.put_nowait(first_frame)
+                    self.queue.put_nowait({"frame": first_frame, "robot": None})
                 except queue.Full:
                     pass
 
@@ -85,25 +148,54 @@ class CameraCaptureThread(threading.Thread):
                 time.sleep(0.05)
                 continue
 
-            # Process frame (e.g., detect robot)
-            processed_frame = ComputerVisionCore.detect_robot(frame)
+            # --- Raw robot detection ---
+            raw_robot = ComputerVisionCore.detect_robot(frame)
+
+            # --- Apply smoothing ---
+            smoothed_robot = self.smooth_robot_pose(raw_robot)
+
+            # Store smoothed pose for other threads
+            with self.robot_pose_lock:
+                self.robot_pose = smoothed_robot
 
             # Overlay static obstacles on the frame
             overlay_frame = frame.copy()
             for poly in self.static_obstacles:
-                pts = np.array(poly.exterior.coords, dtype=np.int32)
-                cv2.polylines(overlay_frame, [pts], True, (0, 255, 0), 2)
+                pts = np.array(poly.exterior.coords, np.int32)   # Nx2 array
+                cv2.polylines(overlay_frame, [pts], isClosed=True, color=(0,255,0), thickness=2)
+
+            # Draw robot markers if found
+            if smoothed_robot is not None and smoothed_robot.get("found"):
+                center = smoothed_robot.get("center")
+                theta = smoothed_robot.get("theta")  # radians
+
+                arrow_length = 60  # pixels
+                dx = int(arrow_length * np.cos(theta))
+                dy = int(arrow_length * np.sin(theta))
+
+                # Red marker
+                cv2.circle(overlay_frame, center, 5, (0,0,255), -1)
+
+                # Orientation arrow
+                cv2.arrowedLine(
+                    overlay_frame,
+                    center,
+                    (center[0] + dx, center[1] + dy),
+                    color=(255,255,0),  # cyan
+                    thickness=2,
+                    tipLength=0.7
+                )
 
             # Push latest frame into queue, keep only newest frame (maxsize=1)
             try:
-                self.frame_queue.put_nowait(processed_frame)
+                self.queue.put_nowait({"frame": overlay_frame, "robot": smoothed_robot})
             except queue.Full:
                 try:
-                    _ = self.frame_queue.get_nowait()
+                    _ = self.queue.get_nowait()
                 except queue.Empty:
                     pass
                 try:
-                    self.frame_queue.put_nowait(processed_frame)
+                    self.queue.put_nowait({"frame": overlay_frame, "robot": smoothed_robot})
                 except queue.Full:
                     pass
 
@@ -111,3 +203,11 @@ class CameraCaptureThread(threading.Thread):
             time.sleep(0.01)
 
         cap.release()
+    
+    # -------------------------------
+    # Access robot pose safely
+    # -------------------------------
+    def get_robot_pose(self):
+        """Thread-safe access to the current smoothed robot pose."""
+        with self.robot_pose_lock:
+            return self.robot_pose.copy() if self.robot_pose else None
