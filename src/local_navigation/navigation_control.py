@@ -274,31 +274,27 @@ class LocalNavigator:
 
             return F_rep
 
- 
+    
 
     def compute_virtual_goal(self, pose, path, sensor_vals=None):
-        if path is None or path.shape[0] == 0:
+        if not path:                           # None or empty list
             return None, None, None, None
 
-        LA_world, _ = self._find_lookahead_point(pose, path)
+        path_arr = np.asarray(path, dtype=float)
+        LA_world, _ = self._find_lookahead_point(pose, path_arr)
         if LA_world is None:
             return None, None, None, None
 
         p_LA_robot = self.world_to_robot(pose, LA_world)
 
-        # Attractive (normalize and scale)
         F_att = p_LA_robot.astype(float)
         norm_att = np.linalg.norm(F_att)
         if norm_att > 1e-6:
             F_att = (self.cfg.k_att / norm_att) * F_att
 
-        # Repulsive
         F_rep = self._repulsive_vector()
-
-        # 🔸 GATE REPULSION BY CURRENT SENSORS 🔸
-        if sensor_vals is not None:
-            if max(sensor_vals) < 300:   # no strong hit at the moment
-                F_rep *= 0.2            # keep only 20% of the repulsion
+        if sensor_vals is not None and max(sensor_vals) < 300:
+            F_rep *= 0.2
 
         F_tot = F_att + F_rep
         norm_tot = np.linalg.norm(F_tot)
@@ -311,7 +307,6 @@ class LocalNavigator:
         virt_world = self.robot_to_world(pose, virt_robot)
 
         return virt_world, LA_world, F_att, F_rep
-
 
 
 # -------------------------------

@@ -114,9 +114,6 @@ class ComputerVisionCore:
                 "green_center": None,
                 "green_area": None
             }
-
-        if len(reds) > 1 or len(greens) > 1:
-            raise RuntimeError("Multiple robot markers detected during auto calibration.")
             
         if not reds or not greens:
             return _return_not_found()
