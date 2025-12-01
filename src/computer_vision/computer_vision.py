@@ -1,12 +1,10 @@
-from typing import Dict, Any
 import cv2
 import numpy as np
 
-from src.computer_vision.vision_params_manager import VisionParamsManager
 
-# =========================================================
-# UTILS
-# =========================================================
+# -----------------------------
+# UTILS (unchanged)
+# -----------------------------
 
 def hsv_mask_circular(hsv, hmin, hmax, smin=40, vmin=40):
     if hmin <= hmax:
@@ -70,145 +68,27 @@ def strengthen_edges(edges, ksize=3, iterations=1):
     k = cv2.getStructuringElement(cv2.MORPH_RECT, (ksize, ksize))
     return cv2.morphologyEx(edges, cv2.MORPH_CLOSE, k, iterations=iterations)
 
-
 # =========================================================
-# COMPUTER VISION CLASS
+# ComputerVisionCore: stateless processing
 # =========================================================
 
-class ComputerVision:
-    def __init__(self, params: VisionParamsManager):
-        self.params = params
-        self.static_polys = None
-        self.pose_alpha = 0.4
-        self.smooth_pose = {"center": None, "theta": None}
-        self.robot_state = {"found": False, "center": None, "theta": None,
-                            "red_center": None, "green_center": None, "robot_mask": None}
-        self.pose_history = []
+class ComputerVisionCore:
+    """
+    Stateless CV core: processes a frame given parameters.
+    """
 
-    # -------------------------------
-    def detect_robot(self, frame):
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        cp = self.params.color_params
-        mask_r = hsv_mask_circular(hsv, cp["R_hmin"], cp["R_hmax"])
-        mask_g = hsv_mask_circular(hsv, cp["G_hmin"], cp["G_hmax"])
-        reds = find_circle_candidates(mask_r, self.params.robot_area["min"], self.params.robot_area["max"])
-        greens = find_circle_candidates(mask_g, self.params.robot_area["min"], self.params.robot_area["max"])
+    @staticmethod
+    def detect_robot(frame: np.ndarray):
+        """
+        Detect robot using red & green circular markers.
 
-        best = None
-        best_score = -1e9
-        for r in reds:
-            for g in greens:
-                if not robot_pair_ok(r, g):
-                    continue
-                s = score_pair(r, g)
-                if s > best_score:
-                    best_score = s
-                    best = (r, g)
-
-        if best is None:
-            self.robot_state.update({"found": False, "center": None, "theta": None,
-                                     "red_center": None, "green_center": None, "robot_mask": None,
-                                     "smooth_center": self.smooth_pose["center"],
-                                     "smooth_theta": self.smooth_pose["theta"]})
-            return self.robot_state
-
-        red, green = best
-        rc, gc = red["center"], green["center"]
-        center = (int((rc[0]+gc[0])/2), int((rc[1]+gc[1])/2))
-        dx, dy = gc[0]-rc[0], gc[1]-rc[1]
-        theta = float(np.arctan2(dy, dx)-np.pi/2)
-
-        mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-        cv2.drawContours(mask, [red["contour"]], -1, 255, -1)
-        cv2.drawContours(mask, [green["contour"]], -1, 255, -1)
-
-        if self.smooth_pose["center"] is None:
-            self.smooth_pose["center"] = center
-            self.smooth_pose["theta"] = theta
-        else:
-            a = self.pose_alpha
-            px, py = self.smooth_pose["center"]
-            sx = (1-a)*px + a*center[0]
-            sy = (1-a)*py + a*center[1]
-            self.smooth_pose["center"] = (int(sx), int(sy))
-            pt = self.smooth_pose["theta"]
-            st = np.arctan2((1-a)*np.sin(pt)+a*np.sin(theta), (1-a)*np.cos(pt)+a*np.cos(theta))
-            self.smooth_pose["theta"] = float(st)
-
-        self.robot_state.update({"found": True, "center": center, "theta": theta,
-                                 "red_center": rc, "green_center": gc, "robot_mask": mask,
-                                 "smooth_center": self.smooth_pose["center"],
-                                 "smooth_theta": self.smooth_pose["theta"]})
-        return self.robot_state
-
-    # -------------------------------
-    def blur_robot(self, frame, state):
-        if state is None or not state.get("found") or state.get("robot_mask") is None:
-            return frame.copy()
-        mask = state["robot_mask"].copy()
-        mask_area = cv2.countNonZero(mask)
-        est_radius = int(max(15, 3.0*np.sqrt(mask_area/np.pi)))
-        ksize = int(0.5*est_radius)
-        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
-        mask = cv2.dilate(mask, k, iterations=1)
-        cleaned = cv2.inpaint(frame, mask, inpaintRadius=7, flags=cv2.INPAINT_TELEA)
-        return cleaned
-
-    # -------------------------------
-    def process(self, frame, skip_blur=False, log_pose=True):
-        st = self.detect_robot(frame)
-        frame_clean = frame if skip_blur else self.blur_robot(frame, st)
-
-        if self.static_polys is not None:
-            polys = list(self.static_polys)
-        else:
-            gray = cv2.cvtColor(frame_clean, cv2.COLOR_BGR2GRAY)
-            edges = cv2.Canny(gray, self.params.canny_params["low"], self.params.canny_params["high"])
-            edges = strengthen_edges(edges, ksize=3, iterations=3)
-            edges = cv2.dilate(edges, cv2.getStructuringElement(cv2.MORPH_RECT, (3,3)), iterations=2)
-
-            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            polys = []
-            for c in contours:
-                a = cv2.contourArea(c)
-                if not (self.params.poly_params["min_area"] < a < self.params.poly_params["max_area"]):
-                    continue
-                epsilon = 0.016*cv2.arcLength(c, True)
-                poly = cv2.approxPolyDP(c, epsilon, True)
-                pts = [(int(p[0][0]), int(p[0][1])) for p in poly]
-                polys.append(pts)
-
-        if log_pose:
-            self._record_pose(st)
-        return polys, st
-
-    # -------------------------------
-    def _record_pose(self, st):
-        if st is None or not st.get("found"):
-            return
-        center = st.get("smooth_center") or st.get("center")
-        theta = st.get("smooth_theta") or st.get("theta")
-        if center is None or theta is None:
-            return
-        self.pose_history.append((float(center[0]), float(center[1]), float(theta)))
-
-    # -------------------------------
-    def get_pose_array(self, as_numpy=True, clear=False):
-        if as_numpy:
-            data = np.array(self.pose_history, dtype=np.float32)
-            if data.size==0:
-                data = data.reshape(0,3)
-        else:
-            data = self.pose_history
-        if clear:
-            self.pose_history=[]
-        return data
-
-    def reset_pose_history(self):
-        self.pose_history=[]
-
-    # -----------------------------------------------------
-    def auto_init_colors(self, frame, expand_h=5, expand_sv=30):
+        Returns dict:
+            found, center, theta,
+            red_center, green_center,
+            robot_mask,
+            smooth_center, smooth_theta
+        """
+        # --------- Auto-detect robot colors---------
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         # Rough masks
@@ -218,53 +98,104 @@ class ComputerVision:
         )
         rough_green_mask = cv2.inRange(hsv, (40, 50, 50), (90, 255, 255))
 
-        red_candidates = find_circle_candidates(rough_red_mask, 10, 10000)
-        green_candidates = find_circle_candidates(rough_green_mask, 10, 10000)
-        if not red_candidates or not green_candidates:
-            raise RuntimeError("Robot markers not detected for auto calibration.")
+        # Find candidate circles first
+        reds = find_circle_candidates(rough_red_mask, min_area=10, max_area=10000)
+        greens = find_circle_candidates(rough_green_mask, min_area=10, max_area=10000)
+        # ------------------------------
 
-        def compute_hsv_range(mask):
-            ys, xs = np.where(mask > 0)
-            if len(xs) == 0:
-                return 0, 179, 0, 255, 0, 255
-            pixels = hsv[ys, xs]
-            hmin = max(0, int(np.min(pixels[:, 0])) - expand_h)
-            hmax = min(179, int(np.max(pixels[:, 0])) + expand_h)
-            return hmin, hmax
+        def _return_not_found():
+            return {
+                "found": False,
+                "center": None,
+                "theta": None,
+                "red_center": None,
+                "red_area": None,
+                "green_center": None,
+                "green_area": None
+            }
 
-        # Red HSV
-        red_mask_combined = np.zeros(frame.shape[:2], dtype=np.uint8)
-        for c in red_candidates:
-            cv2.drawContours(red_mask_combined, [c["contour"]], -1, 255, -1)
-        R_hmin, R_hmax = compute_hsv_range(red_mask_combined)
+        if len(reds) > 1 or len(greens) > 1:
+            raise RuntimeError("Multiple robot markers detected during auto calibration.")
 
-        # Green HSV
-        green_mask_combined = np.zeros(frame.shape[:2], dtype=np.uint8)
-        for c in green_candidates:
-            cv2.drawContours(green_mask_combined, [c["contour"]], -1, 255, -1)
-        G_hmin, G_hmax = compute_hsv_range(green_mask_combined)
+        if not reds or not greens:
+            return _return_not_found()
+        elif reds[0]["area"] > 2000 or greens[0]["area"] > 2000:
+            return _return_not_found()
 
-        # Robot area
-        all_areas = [c["area"] for c in red_candidates + green_candidates]
-        a_min = max(5, int(min(all_areas) * 0.8))
-        a_max = int(max(all_areas) * 1.2)
 
-        print(f"[AUTO INIT] Red H: {R_hmin}-{R_hmax}, Green H: {G_hmin}-{G_hmax}, Area: {a_min}-{a_max}")
+        best_pair = None
+        best_score = -1e12
+        for br in reds:
+            for bg in greens:
+                if not robot_pair_ok(br, bg):
+                    continue
+                s = score_pair(br, bg)
+                if s > best_score:
+                    best_score = s
+                    best_pair = (br, bg)
+
+        if best_pair is None:
+            return _return_not_found()
+
+        br, bg = best_pair
+        robot_center = (int((br["center"][0]+bg["center"][0])/2), int((br["center"][1]+bg["center"][1])/2))
+        dx, dy = bg["center"][0]-br["center"][0], bg["center"][1]-br["center"][1]
+        theta = float(np.arctan2(dy, dx)-np.pi/2)
+
+        # build combined mask
+        comb_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+        cv2.drawContours(comb_mask, [br["contour"]], -1, 255, -1)
+        cv2.drawContours(comb_mask, [bg["contour"]], -1, 255, -1)
 
         return {
-            "color_params": {"R_hmin": R_hmin, "R_hmax": R_hmax, "G_hmin": G_hmin, "G_hmax": G_hmax},
-            "robot_area": {"min": a_min, "max": a_max}
+            "found": True,
+            "center": robot_center,
+            "theta": theta,
+            "red_center": br["center"],
+            "red_area": br["area"],
+            "green_center": bg["center"],
+            "green_area": bg["area"],
         }
     
-    def init_canny(self, frame, sigma=0.33):
+    @staticmethod
+    def detect_polygons(frame: np.ndarray, min_area: int, cany_low=100, cany_high=200):
+        """
+        Detect polygons in the frame using Canny and contour approximation.
+
+        Returns:
+            List of polygons (each polygon is a list of (x,y) points)
+        """
+        frame_copy = frame.copy()
+        robot_pose = ComputerVisionCore.detect_robot(frame_copy)
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (5,5), 0)
+
+        edges = cv2.Canny(blur, cany_low, cany_high)
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, 
+                                 cv2.getStructuringElement(cv2.MORPH_RECT, (5,5)))
+        cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        polygons = []
+        for c in cnts:
+            area = cv2.contourArea(c)
+            if area < min_area:
+                continue
+            hull = cv2.convexHull(c)
+            if len(hull) >= 3:  # at least a triangle
+                poly = [(pt[0][0], pt[0][1]) for pt in hull]
+                polygons.append(poly)
+
+        return polygons
+    
+    @staticmethod
+    def init_canny(frame, sigma=0.33):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
         v = np.median(gray)
 
         low = int(max(0, (1.0 - sigma) * v))
         high = int(min(255, (1.0 + sigma) * v))
-
-        print(f"[AUTO INIT] Canny thresholds: low={low}, high={high}")
 
         return low, high
 # =========================================================
