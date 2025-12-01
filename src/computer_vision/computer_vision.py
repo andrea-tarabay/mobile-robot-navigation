@@ -117,10 +117,11 @@ class ComputerVisionCore:
 
         if len(reds) > 1 or len(greens) > 1:
             raise RuntimeError("Multiple robot markers detected during auto calibration.")
-
+            
         if not reds or not greens:
             return _return_not_found()
-        elif reds[0]["area"] > 2000 or greens[0]["area"] > 2000:
+        
+        if reds[0]["area"] > 2000 or greens[0]["area"] > 2000:
             return _return_not_found()
 
 

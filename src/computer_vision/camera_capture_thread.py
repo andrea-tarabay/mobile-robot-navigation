@@ -2,6 +2,11 @@ import threading
 import queue
 import time
 import cv2
+import numpy as np
+from shapely.geometry import Polygon
+
+from computer_vision.vision_params_manager import VisionParamsManager
+from computer_vision.computer_vision import ComputerVisionCore
 
 class CameraCaptureThread(threading.Thread):
     """
@@ -14,6 +19,12 @@ class CameraCaptureThread(threading.Thread):
         self.device_index = device_index
         self._stop_event = threading.Event()
         self.warmup_timeout = warmup_timeout
+
+        # Vision parameters manager
+        self.params_manager = VisionParamsManager()
+
+        # Store precomputed obstacles
+        self.static_obstacles: list[Polygon] = []
 
     def stop(self):
         self._stop_event.set()
@@ -44,7 +55,16 @@ class CameraCaptureThread(threading.Thread):
         # Warm-up: wait for the camera to produce a valid frame
         first_frame = self._grab_first_valid_frame(cap, self.warmup_timeout)
         if first_frame is not None:
-            # try to put the first frame into queue (overwrite if necessary)
+            # Precompute static obstacles
+            first_frame = ComputerVisionCore.detect_obstacles(
+                first_frame,
+                min_area=self.params_manager.poly_params["min_area"],
+                canny_low=self.params_manager.canny_params["low"],
+                canny_high=self.params_manager.canny_params["high"]
+            )
+            self.static_obstacles = first_frame["obstacles"]
+
+            # Push first valid frame into queue
             try:
                 self.frame_queue.put_nowait(first_frame)
             except queue.Full:
@@ -65,16 +85,25 @@ class CameraCaptureThread(threading.Thread):
                 time.sleep(0.05)
                 continue
 
+            # Process frame (e.g., detect robot)
+            processed_frame = ComputerVisionCore.detect_robot(frame)
+
+            # Overlay static obstacles on the frame
+            overlay_frame = frame.copy()
+            for poly in self.static_obstacles:
+                pts = np.array(poly.exterior.coords, dtype=np.int32)
+                cv2.polylines(overlay_frame, [pts], True, (0, 255, 0), 2)
+
             # Push latest frame into queue, keep only newest frame (maxsize=1)
             try:
-                self.frame_queue.put_nowait(frame)
+                self.frame_queue.put_nowait(processed_frame)
             except queue.Full:
                 try:
                     _ = self.frame_queue.get_nowait()
                 except queue.Empty:
                     pass
                 try:
-                    self.frame_queue.put_nowait(frame)
+                    self.frame_queue.put_nowait(processed_frame)
                 except queue.Full:
                     pass
 
