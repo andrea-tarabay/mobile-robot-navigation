@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from shapely.geometry import Polygon, Point
+from shapely.geometry import Polygon, box
 
 
 # -----------------------------
@@ -94,10 +94,10 @@ class ComputerVisionCore:
 
         # Rough masks
         rough_red_mask = cv2.bitwise_or(
-            cv2.inRange(hsv, (0, 50, 50), (10, 255, 255)),
-            cv2.inRange(hsv, (160, 50, 50), (179, 255, 255))
+            cv2.inRange(hsv, (0, 40, 40), (10, 255, 255)),
+            cv2.inRange(hsv, (160, 40, 40), (179, 255, 255))
         )
-        rough_green_mask = cv2.inRange(hsv, (40, 50, 50), (90, 255, 255))
+        rough_green_mask = cv2.inRange(hsv, (40, 40, 40), (90, 255, 255))
 
         # Find candidate circles first
         reds = find_circle_candidates(rough_red_mask, min_area=10, max_area=10000)
@@ -141,11 +141,6 @@ class ComputerVisionCore:
         dx, dy = bg["center"][0]-br["center"][0], bg["center"][1]-br["center"][1]
         theta = float(np.arctan2(dy, dx)-np.pi/2)
 
-        # build combined mask
-        comb_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-        cv2.drawContours(comb_mask, [br["contour"]], -1, 255, -1)
-        cv2.drawContours(comb_mask, [bg["contour"]], -1, 255, -1)
-
         return {
             "found": True,
             "center": robot_center,
@@ -168,14 +163,24 @@ class ComputerVisionCore:
         frame_copy = frame.copy()
         robot_pose = ComputerVisionCore.detect_robot(frame_copy)
 
-        # If robot found, create a list of points to exclude
-        not_obstacle_points = []
+         # Create robot rectangle if robot is found
+        robot_bbox = None
         if robot_pose["found"]:
-            not_obstacle_points.append(Point(robot_pose["center"]))
-            if robot_pose["red_center"]:
-                not_obstacle_points.append(Point(robot_pose["red_center"]))
-            if robot_pose["green_center"]:
-                not_obstacle_points.append(Point(robot_pose["green_center"]))
+            # Get robot markers
+            rc = robot_pose["red_center"]
+            gc = robot_pose["green_center"]
+            center = robot_pose["center"]
+
+            # Compute bounding box that contains all three points
+            xs = [pt[0] for pt in [rc, gc, center] if pt is not None]
+            ys = [pt[1] for pt in [rc, gc, center] if pt is not None]
+
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+
+            # Add some margin (e.g., 10 pixels)
+            margin = 10
+            robot_bbox = box(x_min - margin, y_min - margin, x_max + margin, y_max + margin)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5,5), 0)
@@ -193,8 +198,8 @@ class ComputerVisionCore:
             hull = cv2.convexHull(c)
             if len(hull) >= 3:  # at least a triangle
                 poly = Polygon([(pt[0][0], pt[0][1]) for pt in hull])
-                # Skip polygon if it contains any "not_obstacle" points
-                if any(poly.contains(p) for p in not_obstacle_points):
+                # Skip polygon if it intersects with robot bounding box
+                if robot_bbox is not None and poly.intersects(robot_bbox):
                     continue
                 obstacles.append(poly)
 
