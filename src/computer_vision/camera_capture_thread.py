@@ -22,6 +22,7 @@ class CameraCaptureThread(threading.Thread):
 
         # Vision parameters manager
         self.params_manager = VisionParamsManager()
+        self.params_manager.load()
 
         # Store precomputed obstacles
         self.static_obstacles: list[Polygon] = []
