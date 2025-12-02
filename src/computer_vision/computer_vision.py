@@ -116,7 +116,7 @@ class ComputerVisionCore:
         if not reds or not greens:
             return _return_not_found()
         
-        if reds[0]["area"] > 2000 or greens[0]["area"] > 2000:
+        if reds[0]["area"] > 8000 or greens[0]["area"] > 8000:
             return _return_not_found()
 
 
