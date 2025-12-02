@@ -79,7 +79,10 @@ class ComputerVisionCore:
     """
 
     @staticmethod
-    def detect_robot(frame: np.ndarray):
+    def detect_robot(frame: np.ndarray, 
+                     R_hmin: int = 0, R_hmax: int = 10,
+                     G_hmin: int = 50, G_hmax: int = 70,
+                     S_min: int = 100, V_min: int = 100):
         """
         Detect robot using red & green circular markers.
 
@@ -89,20 +92,15 @@ class ComputerVisionCore:
             robot_mask,
             smooth_center, smooth_theta
         """
-        # --------- Auto-detect robot colors---------
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         # Rough masks
-        rough_red_mask = cv2.bitwise_or(
-            cv2.inRange(hsv, (0, 40, 40), (10, 255, 255)),
-            cv2.inRange(hsv, (160, 40, 40), (179, 255, 255))
-        )
-        rough_green_mask = cv2.inRange(hsv, (40, 40, 40), (90, 255, 255))
+        rough_red_mask = hsv_mask_circular(hsv, R_hmin, R_hmax, S_min, V_min)
+        rough_green_mask = hsv_mask_circular(hsv, G_hmin, G_hmax, S_min, V_min)
 
         # Find candidate circles first
         reds = find_circle_candidates(rough_red_mask, min_area=10, max_area=10000)
         greens = find_circle_candidates(rough_green_mask, min_area=10, max_area=10000)
-        # ------------------------------
 
         def _return_not_found():
             return {
@@ -152,7 +150,44 @@ class ComputerVisionCore:
         }
     
     @staticmethod
-    def detect_obstacles(frame: np.ndarray, min_area: int, canny_low=100, canny_high=200):
+    def detect_goal(frame: np.ndarray, B_hmin: int, B_hmax: int, S_min: int, V_min: int):
+        """
+        Detect goal using blue circular marker.
+
+        Returns dict:
+            found, center,
+            goal_mask
+        """
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+        # Rough mask
+        rough_blue_mask = hsv_mask_circular(hsv, B_hmin, B_hmax, S_min, V_min)
+
+        # Find candidate circles first
+        blues = find_circle_candidates(rough_blue_mask, min_area=10, max_area=10000)
+
+        def _return_not_found():
+            return {
+                "found": False,
+                "center": None,
+            }
+            
+        if not blues:
+            return _return_not_found()
+        
+        if blues[0]["area"] > 5000:
+            return _return_not_found()
+
+        gb = blues[0]
+        goal_center = gb["center"]
+
+        return {
+            "found": True,
+            "center": goal_center,
+        }
+    
+    @staticmethod
+    def detect_obstacles(frame: np.ndarray, min_area: int, canny_low=100, canny_high=200, margin=10):
         """
         Detect polygons in the frame using Canny and contour approximation.
         Removes polygons containing the robot position.
@@ -179,7 +214,6 @@ class ComputerVisionCore:
             y_min, y_max = min(ys), max(ys)
 
             # Add some margin (e.g., 10 pixels)
-            margin = 10
             robot_bbox = box(x_min - margin, y_min - margin, x_max + margin, y_max + margin)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)

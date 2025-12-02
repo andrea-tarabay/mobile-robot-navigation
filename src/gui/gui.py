@@ -115,7 +115,7 @@ class Gui(tk.Tk):
     # -------------------------
     def _set_buttons_wait_for_init(self):
         """At application start:"""
-        self.init_btn.config(state="normal")
+        self.init_btn.config(state="disabled")
         self._check_params_file()
         self.stop_btn.config(state="disabled")
         self.pause_btn.config(state="disabled")
@@ -123,7 +123,7 @@ class Gui(tk.Tk):
 
     def _set_buttons_ready(self):
         """At application start: Start enabled, others disabled."""
-        self.init_btn.config(state="normal")
+        self.init_btn.config(state="disabled")
         self._check_params_file()
         self.stop_btn.config(state="disabled")
         self.pause_btn.config(state="disabled")

@@ -100,9 +100,9 @@ class CameraCaptureThread(threading.Thread):
         # Build smoothed pose
         smoothed = {
             "found": True,
-            "center": (int(round(self.smoothed_center[0])), int(round(self.smoothed_center[1]))) if self.smoothed_center is not None else None,
-            "red_center": (int(round(self.smoothed_red[0])), int(round(self.smoothed_red[1]))) if self.smoothed_red is not None else None,
-            "green_center": (int(round(self.smoothed_green[0])), int(round(self.smoothed_green[1]))) if self.smoothed_green is not None else None,
+            "center": (int(round(self.smoothed_center[0])), int(round(self.smoothed_center[1]))) if self.smoothed_center is not None else robot["center"],
+            "red_center": (int(round(self.smoothed_red[0])), int(round(self.smoothed_red[1]))) if self.smoothed_red is not None else robot["red_center"],
+            "green_center": (int(round(self.smoothed_green[0])), int(round(self.smoothed_green[1]))) if self.smoothed_green is not None else robot["green_center"],
             "theta": self.smoothed_theta,
         }
 
@@ -128,17 +128,7 @@ class CameraCaptureThread(threading.Thread):
             self.static_obstacles = obstacles
 
             # Push first valid frame into queue
-            try:
-                self.queue.put_nowait({"frame": first_frame, "robot": None})
-            except queue.Full:
-                try:
-                    _ = self.queue.get_nowait()
-                except queue.Empty:
-                    pass
-                try:
-                    self.queue.put_nowait({"frame": first_frame, "robot": None})
-                except queue.Full:
-                    pass
+            self.push_processed_data(first_frame, None)
 
         # Continuous capture loop
         while not self._stop_event.is_set():
@@ -148,61 +138,87 @@ class CameraCaptureThread(threading.Thread):
                 time.sleep(0.05)
                 continue
 
-            # --- Raw robot detection ---
-            raw_robot = ComputerVisionCore.detect_robot(frame)
-
-            # --- Apply smoothing ---
-            smoothed_robot = self.smooth_robot_pose(raw_robot)
-
-            # Store smoothed pose for other threads
-            with self.robot_pose_lock:
-                self.robot_pose = smoothed_robot
-
-            # Overlay static obstacles on the frame
-            overlay_frame = frame.copy()
-            for poly in self.static_obstacles:
-                pts = np.array(poly.exterior.coords, np.int32)   # Nx2 array
-                cv2.polylines(overlay_frame, [pts], isClosed=True, color=(0,255,0), thickness=2)
-
-            # Draw robot markers if found
-            if smoothed_robot is not None and smoothed_robot.get("found"):
-                center = smoothed_robot.get("center")
-                theta = smoothed_robot.get("theta")  # radians
-
-                arrow_length = 60  # pixels
-                dx = int(arrow_length * np.cos(theta))
-                dy = int(arrow_length * np.sin(theta))
-
-                # Red marker
-                cv2.circle(overlay_frame, center, 5, (0,0,255), -1)
-
-                # Orientation arrow
-                cv2.arrowedLine(
-                    overlay_frame,
-                    center,
-                    (center[0] + dx, center[1] + dy),
-                    color=(255,255,0),  # cyan
-                    thickness=2,
-                    tipLength=0.7
-                )
+            # Process frame:
+            process_frame = frame.copy()
+            smoothed_robot = self.process_frame(process_frame)
 
             # Push latest frame into queue, keep only newest frame (maxsize=1)
-            try:
-                self.queue.put_nowait({"frame": overlay_frame, "robot": smoothed_robot})
-            except queue.Full:
-                try:
-                    _ = self.queue.get_nowait()
-                except queue.Empty:
-                    pass
-                try:
-                    self.queue.put_nowait({"frame": overlay_frame, "robot": smoothed_robot})
-                except queue.Full:
-                    pass
+            self.push_processed_data(process_frame, smoothed_robot)
 
             # throttle capture rate slightly to reduce CPU (adjust as needed)
             time.sleep(0.01)
 
         cap.release()
+
+    def process_frame(self, frame: np.ndarray):
+        """
+        Process incoming frame from the queue.
+        Returns dict with keys: frame (np.ndarray), robot (dict)
+        or None if no frame is available.
+        """
+        overlay_frame = frame.copy()
+
+        # --- Raw robot detection ---
+        raw_robot = ComputerVisionCore.detect_robot(
+            frame,
+            R_hmin=self.params_manager.color_params["R_hmin"],
+            R_hmax=self.params_manager.color_params["R_hmax"],
+            G_hmin=self.params_manager.color_params["G_hmin"],
+            G_hmax=self.params_manager.color_params["G_hmax"],
+            S_min=self.params_manager.color_params["S_min"],
+            V_min=self.params_manager.color_params["V_min"]
+        )
+
+        # --- Apply smoothing ---
+        smoothed_robot = self.smooth_robot_pose(raw_robot)
+
+        # Store smoothed pose for other threads
+        with self.robot_pose_lock:
+            self.robot_pose = smoothed_robot
+
+        # Overlay static obstacles on the frame
+        if self.static_obstacles:
+            for poly in self.static_obstacles:
+                pts = np.array(poly.exterior.coords, np.int32)   # Nx2 array
+                cv2.polylines(overlay_frame, [pts], isClosed=True, color=(0,255,0), thickness=2)
+
+        # Draw robot markers if found
+        if smoothed_robot is not None and smoothed_robot.get("found"):
+            center = smoothed_robot.get("center")
+            theta = smoothed_robot.get("theta")  # radians
+
+            arrow_length = 60  # pixels
+            dx = int(arrow_length * np.cos(theta))
+            dy = int(arrow_length * np.sin(theta))
+
+            # Red marker
+            cv2.circle(overlay_frame, center, 5, (0,0,255), -1)
+
+            # Orientation arrow
+            cv2.arrowedLine(
+                overlay_frame,
+                center,
+                (center[0] + dx, center[1] + dy),
+                color=(255,255,0),  # cyan
+                thickness=2,
+                tipLength=0.7
+            )
+
+    def push_processed_data(self, frame: np.ndarray, robot: dict):
+        """
+        Push processed frame and robot data into the queue.
+        """
+        try:
+            self.queue.put_nowait({"frame": frame, "robot": robot})
+        except queue.Full:
+            try:
+                _ = self.queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.queue.put_nowait({"frame": frame, "robot": robot})
+            except queue.Full:
+                pass
     
     # -------------------------------
     # Access robot pose safely
