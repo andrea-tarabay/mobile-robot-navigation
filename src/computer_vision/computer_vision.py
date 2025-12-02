@@ -249,4 +249,24 @@ class ComputerVisionCore:
         high = int(min(255, (1.0 + sigma) * v))
 
         return low, high
+    
+    @staticmethod
+    def px_to_mm(distance_px, mm_per_pixel):
+        """
+        Convert distance in pixels to millimeters using known millimeter-per-pixel ratio.
+        """
+        return distance_px * mm_per_pixel
+    
+    @staticmethod
+    def mm_to_px(distance_mm, mm_per_pixel):
+        """
+        Convert distance in millimeters to pixels using known millimeter-per-pixel ratio.
+        """
+        return distance_mm / mm_per_pixel
+    
+    @staticmethod
+    def compute_mm_per_pixel(point_px_1, point_px_2, real_dist_mm):
+        """Compute millimeter-per-pixel scale using two known markers."""
+        pixel_dist = np.linalg.norm(np.array(point_px_1, float) - np.array(point_px_2, float))
+        return real_dist_mm / pixel_dist
 # =========================================================
