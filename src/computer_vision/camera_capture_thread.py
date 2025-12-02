@@ -24,8 +24,9 @@ class CameraCaptureThread(threading.Thread):
         self.params_manager = VisionParamsManager()
         self.params_manager.load()
 
-        # Store precomputed obstacles
+        # Store precomputed obstacles and goal position
         self.static_obstacles: list[Polygon] = []
+        self.goal = None  # detected goal position
 
         # EMA filter state variables
         self.smoothed_center = None
@@ -113,19 +114,8 @@ class CameraCaptureThread(threading.Thread):
             cap.release()
             return
 
-        # Warm-up: wait for the camera to produce a valid frame
-        first_frame = self._grab_first_valid_frame(cap, self.warmup_timeout)
-        if first_frame is not None:
-            # Precompute static obstacles
-            obstacles = ComputerVisionCore.detect_obstacles(
-                        first_frame, self.params_manager.color_params, 
-                        self.params_manager.canny_params, 
-                        self.params_manager.poly_params
-                    )
-            self.static_obstacles = obstacles
-
-            # Push first valid frame into queue
-            self.push_processed_data(first_frame, None)
+        # Initialize static obstacles
+        self.init_obstacles_and_goal(cap)
 
         # Continuous capture loop
         while not self._stop_event.is_set():
@@ -139,6 +129,8 @@ class CameraCaptureThread(threading.Thread):
             processed_frame = frame.copy()
             smoothed_robot, processed_frame = self.process_frame(processed_frame)
 
+            # Compute global path
+
             # Push latest frame into queue, keep only newest frame (maxsize=1)
             self.push_processed_data(processed_frame, smoothed_robot)
 
@@ -146,6 +138,19 @@ class CameraCaptureThread(threading.Thread):
             time.sleep(0.01)
 
         cap.release()
+
+    def init_obstacles_and_goal(self, cap):
+        first_frame = self._grab_first_valid_frame(cap, self.warmup_timeout)
+        if first_frame is not None:
+            # Detect goal position
+            self.goal = ComputerVisionCore.detect_goal(first_frame, self.params_manager.color_params)
+
+            # Precompute static obstacles
+            self.static_obstacles = ComputerVisionCore.detect_obstacles(
+                        first_frame, self.params_manager.color_params, 
+                        self.params_manager.canny_params, 
+                        self.params_manager.poly_params
+                    )
 
     def process_frame(self, frame: np.ndarray):
         """
@@ -170,6 +175,10 @@ class CameraCaptureThread(threading.Thread):
             for poly in self.static_obstacles:
                 pts = np.array(poly.exterior.coords, np.int32)   # Nx2 array
                 cv2.polylines(overlay_frame, [pts], isClosed=True, color=(0,255,0), thickness=2)
+
+        # Overlay goal position
+        if self.goal and self.goal.get("found") and self.goal.get("center") is not None:
+            cv2.circle(overlay_frame, self.goal["center"], 5, (0,255,255), -1)
 
         # Draw robot markers if found
         if smoothed_robot is not None and smoothed_robot.get("found"):

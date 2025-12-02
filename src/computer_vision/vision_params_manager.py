@@ -50,6 +50,8 @@ class VisionParamsManager:
             "R_hmax": 15,
             "G_hmin": 40,
             "G_hmax": 90,
+            "B_hmin": 100,
+            "B_hmax": 130,
             "S_min": 40,
             "V_min": 40
         }

@@ -77,7 +77,9 @@ class ComputerVisionCore:
     # ---- Constants ----
     MM_PER_PIXEL = 0.876
 
+    MARKER_RADIUS_MM = 20
     ROBOT_RADIUS_MM = 72
+    GOAL_RADIUS_MM = 50
 
 
     @staticmethod
@@ -104,8 +106,10 @@ class ComputerVisionCore:
         combined_mask = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
 
         # Find candidate circles first
-        reds = find_circle_candidates(rough_red_mask, min_area=10, max_area=10000)
-        greens = find_circle_candidates(rough_green_mask, min_area=10, max_area=10000)
+        min_area_marker = np.pi * (ComputerVisionCore.mm_to_px(ComputerVisionCore.MARKER_RADIUS_MM) * 0.5) **2
+        max_area_marker = np.pi * (ComputerVisionCore.mm_to_px(ComputerVisionCore.MARKER_RADIUS_MM) * 1.5) **2
+        reds = find_circle_candidates(rough_red_mask, min_area=min_area_marker, max_area=max_area_marker)
+        greens = find_circle_candidates(rough_green_mask, min_area=min_area_marker, max_area=max_area_marker)
 
         def _return_not_found():
             return {
@@ -120,10 +124,6 @@ class ComputerVisionCore:
             
         if not reds or not greens:
             return _return_not_found()
-        
-        if reds[0]["area"] > 8000 or greens[0]["area"] > 8000:
-            return _return_not_found()
-
 
         best_pair = None
         best_score = -1e12
@@ -161,28 +161,32 @@ class ComputerVisionCore:
         Detect goal using blue circular marker.
 
         Returns dict:
-            found, center,
+            found, 
+            center,
             goal_mask
         """
+        overlay = frame.copy()
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         # Rough mask
         rough_blue_mask = hsv_mask_circular(hsv, params_color["B_hmin"], params_color["B_hmax"], 
                                            params_color["S_min"], params_color["V_min"])
+        overlay[rough_blue_mask > 0] = (255, 0, 0)
+        goal_mask = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
 
         # Find candidate circles first
-        blues = find_circle_candidates(rough_blue_mask, min_area=10, max_area=10000)
+        min_area_goal = np.pi * (ComputerVisionCore.mm_to_px(ComputerVisionCore.GOAL_RADIUS_MM) * 0.5) **2
+        max_area_goal = np.pi * (ComputerVisionCore.mm_to_px(ComputerVisionCore.GOAL_RADIUS_MM) * 1.5) **2
+        blues = find_circle_candidates(rough_blue_mask, min_area=min_area_goal, max_area=max_area_goal)
 
         def _return_not_found():
             return {
                 "found": False,
                 "center": None,
+                "goal_mask": None
             }
             
         if not blues:
-            return _return_not_found()
-        
-        if blues[0]["area"] > 5000:
             return _return_not_found()
 
         gb = blues[0]
@@ -191,6 +195,7 @@ class ComputerVisionCore:
         return {
             "found": True,
             "center": goal_center,
+            "goal_mask": goal_mask
         }
     
     @staticmethod
@@ -219,6 +224,23 @@ class ComputerVisionCore:
             # Add some margin (e.g., 10 pixels)
             robot_bbox = box(x_min, y_min, x_max, y_max)
 
+        frame_copy = frame.copy()
+        goal_pose = ComputerVisionCore.detect_goal(frame_copy, params_color)
+
+        # Create goal rectangle if goal is found
+        goal_bbox = None
+        if goal_pose["found"]:
+            # Get goal center
+            center = goal_pose["center"]
+
+            x_min = center[0] - ComputerVisionCore.mm_to_px(ComputerVisionCore.GOAL_RADIUS_MM)
+            x_max = center[0] + ComputerVisionCore.mm_to_px(ComputerVisionCore.GOAL_RADIUS_MM)
+            y_min = center[1] - ComputerVisionCore.mm_to_px(ComputerVisionCore.GOAL_RADIUS_MM)
+            y_max = center[1] + ComputerVisionCore.mm_to_px(ComputerVisionCore.GOAL_RADIUS_MM)
+
+            # Add some margin (e.g., 10 pixels)
+            goal_bbox = box(x_min, y_min, x_max, y_max)
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5,5), 0)
 
@@ -237,6 +259,9 @@ class ComputerVisionCore:
                 poly = Polygon([(pt[0][0], pt[0][1]) for pt in hull])
                 # Skip polygon if it intersects with robot bounding box
                 if robot_bbox is not None and poly.intersects(robot_bbox):
+                    continue
+                # Skip polygon if it intersects with goal bounding box
+                if goal_bbox is not None and poly.intersects(goal_bbox):
                     continue
                 obstacles.append(poly)
 
