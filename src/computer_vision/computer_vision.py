@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from typing import Optional
 from shapely.geometry import Polygon, box
 
 
@@ -73,12 +74,14 @@ class ComputerVisionCore:
     """
     Stateless CV core: processes a frame given parameters.
     """
+    # ---- Constants ----
+    MM_PER_PIXEL = 0.876
+
+    ROBOT_RADIUS_MM = 72
+
 
     @staticmethod
-    def detect_robot(frame: np.ndarray, 
-                     R_hmin: int = 0, R_hmax: int = 10,
-                     G_hmin: int = 50, G_hmax: int = 70,
-                     S_min: int = 100, V_min: int = 100):
+    def detect_robot(frame: np.ndarray, params_color: dict):
         """
         Detect robot using red & green circular markers.
 
@@ -92,9 +95,10 @@ class ComputerVisionCore:
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         # Rough masks
-        rough_red_mask = hsv_mask_circular(hsv, R_hmin, R_hmax, S_min, V_min)
-        rough_green_mask = hsv_mask_circular(hsv, G_hmin, G_hmax, S_min, V_min)
-
+        rough_red_mask = hsv_mask_circular(hsv, params_color["R_hmin"], params_color["R_hmax"], 
+                                           params_color["S_min"], params_color["V_min"])
+        rough_green_mask = hsv_mask_circular(hsv, params_color["G_hmin"], params_color["G_hmax"], 
+                                             params_color["S_min"], params_color["V_min"])
         overlay[rough_red_mask > 0] = (0, 0, 255)
         overlay[rough_green_mask > 0] = (0, 255, 0)
         combined_mask = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
@@ -152,7 +156,7 @@ class ComputerVisionCore:
         }
     
     @staticmethod
-    def detect_goal(frame: np.ndarray, B_hmin: int, B_hmax: int, S_min: int, V_min: int):
+    def detect_goal(frame: np.ndarray, params_color: dict):
         """
         Detect goal using blue circular marker.
 
@@ -163,7 +167,8 @@ class ComputerVisionCore:
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         # Rough mask
-        rough_blue_mask = hsv_mask_circular(hsv, B_hmin, B_hmax, S_min, V_min)
+        rough_blue_mask = hsv_mask_circular(hsv, params_color["B_hmin"], params_color["B_hmax"], 
+                                           params_color["S_min"], params_color["V_min"])
 
         # Find candidate circles first
         blues = find_circle_candidates(rough_blue_mask, min_area=10, max_area=10000)
@@ -189,7 +194,7 @@ class ComputerVisionCore:
         }
     
     @staticmethod
-    def detect_obstacles(frame: np.ndarray, min_area: int, canny_low=100, canny_high=200, margin=10):
+    def detect_obstacles(frame: np.ndarray, params_color: dict, params_canny: dict, params_poly: dict):
         """
         Detect polygons in the frame using Canny and contour approximation.
         Removes polygons containing the robot position.
@@ -198,30 +203,26 @@ class ComputerVisionCore:
             List of polygons (each polygon is a Shapely Polygon)
         """
         frame_copy = frame.copy()
-        robot_pose = ComputerVisionCore.detect_robot(frame_copy)
+        robot_pose = ComputerVisionCore.detect_robot(frame_copy, params_color)
 
          # Create robot rectangle if robot is found
         robot_bbox = None
         if robot_pose["found"]:
-            # Get robot markers
-            rc = robot_pose["red_center"]
-            gc = robot_pose["green_center"]
+            # Get robot center
             center = robot_pose["center"]
 
-            # Compute bounding box that contains all three points
-            xs = [pt[0] for pt in [rc, gc, center] if pt is not None]
-            ys = [pt[1] for pt in [rc, gc, center] if pt is not None]
-
-            x_min, x_max = min(xs), max(xs)
-            y_min, y_max = min(ys), max(ys)
+            x_min = center[0] - ComputerVisionCore.mm_to_px(ComputerVisionCore.ROBOT_RADIUS_MM)
+            x_max = center[0] + ComputerVisionCore.mm_to_px(ComputerVisionCore.ROBOT_RADIUS_MM)
+            y_min = center[1] - ComputerVisionCore.mm_to_px(ComputerVisionCore.ROBOT_RADIUS_MM)
+            y_max = center[1] + ComputerVisionCore.mm_to_px(ComputerVisionCore.ROBOT_RADIUS_MM)
 
             # Add some margin (e.g., 10 pixels)
-            robot_bbox = box(x_min - margin, y_min - margin, x_max + margin, y_max + margin)
+            robot_bbox = box(x_min, y_min, x_max, y_max)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5,5), 0)
 
-        edges = cv2.Canny(blur, canny_low, canny_high)
+        edges = cv2.Canny(blur, params_canny["low"], params_canny["high"])
         edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, 
                                  cv2.getStructuringElement(cv2.MORPH_RECT, (5,5)))
         cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -229,7 +230,7 @@ class ComputerVisionCore:
         obstacles = []
         for c in cnts:
             area = cv2.contourArea(c)
-            if area < min_area:
+            if area < params_poly["min_area"]:
                 continue
             hull = cv2.convexHull(c)
             if len(hull) >= 3:  # at least a triangle
@@ -253,17 +254,21 @@ class ComputerVisionCore:
         return low, high
     
     @staticmethod
-    def px_to_mm(distance_px, mm_per_pixel):
+    def px_to_mm(distance_px, mm_per_pixel: Optional[float] = None):
         """
         Convert distance in pixels to millimeters using known millimeter-per-pixel ratio.
         """
+        if mm_per_pixel is None:
+            mm_per_pixel = ComputerVisionCore.MM_PER_PIXEL
         return distance_px * mm_per_pixel
     
     @staticmethod
-    def mm_to_px(distance_mm, mm_per_pixel):
+    def mm_to_px(distance_mm, mm_per_pixel: Optional[float] = None):
         """
         Convert distance in millimeters to pixels using known millimeter-per-pixel ratio.
         """
+        if mm_per_pixel is None:
+            mm_per_pixel = ComputerVisionCore.MM_PER_PIXEL
         return distance_mm / mm_per_pixel
     
     @staticmethod

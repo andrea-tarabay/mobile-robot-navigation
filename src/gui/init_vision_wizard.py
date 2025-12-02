@@ -221,13 +221,7 @@ class InitVisionWizard(tk.Toplevel):
 
         # --- Process based on current step ---
         if self.steps[self.step] == "Colors":
-            robot_state = ComputerVisionCore.detect_robot(frame_copy,
-                                            R_hmin=self.params.color_params.get("R_hmin"),
-                                            R_hmax=self.params.color_params.get("R_hmax"),
-                                            G_hmin=self.params.color_params.get("G_hmin"),
-                                            G_hmax=self.params.color_params.get("G_hmax"),
-                                            S_min=self.params.color_params.get("S_min"),
-                                            V_min=self.params.color_params.get("V_min"))
+            robot_state = ComputerVisionCore.detect_robot(frame_copy, self.params.color_params)
             if robot_state.get("found") and robot_state["robot_mask"] is not None:
                 frame_copy = robot_state["robot_mask"]
                 cv2.circle(frame_copy, robot_state["red_center"], 5, (0,0,255), -1)
@@ -245,12 +239,8 @@ class InitVisionWizard(tk.Toplevel):
             frame_copy = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
 
         elif self.steps[self.step] == "Polygons":
-            obstacles = ComputerVisionCore.detect_obstacles(
-                frame_copy, 
-                self.params.poly_params.get("min_area"),
-                self.params.canny_params.get("low"),
-                self.params.canny_params.get("high")
-            )
+            obstacles = ComputerVisionCore.detect_obstacles(frame_copy, self.params.color_params, 
+                                                            self.params.canny_params, self.params.poly_params)
 
             for poly in obstacles:
                 pts = np.array(poly.exterior.coords, dtype=np.int32)

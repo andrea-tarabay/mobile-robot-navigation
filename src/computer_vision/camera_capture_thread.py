@@ -118,11 +118,10 @@ class CameraCaptureThread(threading.Thread):
         if first_frame is not None:
             # Precompute static obstacles
             obstacles = ComputerVisionCore.detect_obstacles(
-                first_frame,
-                min_area=self.params_manager.poly_params["min_area"],
-                canny_low=self.params_manager.canny_params["low"],
-                canny_high=self.params_manager.canny_params["high"]
-            )
+                        first_frame, self.params_manager.color_params, 
+                        self.params_manager.canny_params, 
+                        self.params_manager.poly_params
+                    )
             self.static_obstacles = obstacles
 
             # Push first valid frame into queue
@@ -157,15 +156,7 @@ class CameraCaptureThread(threading.Thread):
         overlay_frame = frame.copy()
 
         # --- Raw robot detection ---
-        raw_robot = ComputerVisionCore.detect_robot(
-            frame,
-            R_hmin=self.params_manager.color_params["R_hmin"],
-            R_hmax=self.params_manager.color_params["R_hmax"],
-            G_hmin=self.params_manager.color_params["G_hmin"],
-            G_hmax=self.params_manager.color_params["G_hmax"],
-            S_min=self.params_manager.color_params["S_min"],
-            V_min=self.params_manager.color_params["V_min"]
-        )
+        raw_robot = ComputerVisionCore.detect_robot(frame, self.params_manager.color_params)
 
         # --- Apply smoothing ---
         smoothed_robot = self.smooth_robot_pose(raw_robot)
