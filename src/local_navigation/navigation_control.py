@@ -293,8 +293,12 @@ class LocalNavigator:
             F_att = (self.cfg.k_att / norm_att) * F_att
 
         F_rep = self._repulsive_vector()
-        if sensor_vals is not None and max(sensor_vals) < 300:
-            F_rep *= 0.2
+        F_rep = self._repulsive_vector()
+        if sensor_vals is None or max(sensor_vals) < 300:
+            # no significant obstacle: go straight to lookahead
+            return LA_world, LA_world, F_att, np.zeros(2)
+        #if sensor_vals is not None and max(sensor_vals) < 300:
+         #   F_rep *= 0.2
 
         F_tot = F_att + F_rep
         norm_tot = np.linalg.norm(F_tot)
