@@ -27,9 +27,6 @@ class CameraCaptureThread(threading.Thread):
         # Store precomputed obstacles
         self.static_obstacles: list[Polygon] = []
 
-        # EMA smoothing factor
-        self.alpha = smooth_alpha
-
         # EMA filter state variables
         self.smoothed_center = None
         self.smoothed_red = None
@@ -93,10 +90,10 @@ class CameraCaptureThread(threading.Thread):
             return None  # No detection, skip
 
         # Smooth each attribute
-        self.smoothed_center = self._smooth_point(self.smoothed_center, robot["center"])
-        self.smoothed_red    = self._smooth_point(self.smoothed_red, robot["red_center"])
-        self.smoothed_green  = self._smooth_point(self.smoothed_green, robot["green_center"])
-        self.smoothed_theta  = self._smooth_angle(self.smoothed_theta, robot["theta"])
+        self.smoothed_center = self._smooth_point(self.smoothed_center, robot["center"], alpha)
+        self.smoothed_red    = self._smooth_point(self.smoothed_red, robot["red_center"], alpha)
+        self.smoothed_green  = self._smooth_point(self.smoothed_green, robot["green_center"], alpha)
+        self.smoothed_theta  = self._smooth_angle(self.smoothed_theta, robot["theta"], alpha)
 
         # Build smoothed pose
         smoothed = {

@@ -24,22 +24,16 @@ class VisionParamsManager:
     def set_params(self, params: dict):
         if "color_params" in params:
             self.color_params.update(params["color_params"])
-        if "areas_params" in params:
-            self.areas_params.update(params["areas_params"])
         if "canny_params" in params:
             self.canny_params.update(params["canny_params"])
         if "poly_params" in params:
             self.poly_params.update(params["poly_params"])
-        if "robot_params" in params:
-            self.robot_params.update(params["robot_params"])
 
     def save(self):
         data = {
             "color_params": self.color_params,
-            "areas_params": self.areas_params,
             "canny_params": self.canny_params,
-            "poly_params": self.poly_params,
-            "robot_params": self.robot_params
+            "poly_params": self.poly_params
         }
         with open(self.path, "w") as f:
             json.dump(data, f, indent=2)
@@ -59,18 +53,6 @@ class VisionParamsManager:
             "S_min": 40,
             "V_min": 40
         }
-        self.areas_params = {
-            "min_obstacle_area": 20000,
-            "min_red_area": 150,
-            "max_red_area": 2000,
-            "min_green_area": 150,
-            "max_green_area": 2000,
-            "min_blue_area": 150,
-            "max_blue_area": 2000,
-            "min_robot_area": 5000,
-            "max_robot_area": 50000,
-            "margin": 10
-        }
         self.canny_params = {
             "sigma": 0.33,
             "low": 100,
@@ -78,9 +60,4 @@ class VisionParamsManager:
         }
         self.poly_params = {
             "min_area": 3943
-        }
-        self.robot_params = {
-            "robot_length_mm": 100,
-            "robot_width_mm": 90,
-            "robot_radius_mm": 110
         }
