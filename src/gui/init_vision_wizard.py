@@ -11,13 +11,14 @@ from computer_vision.computer_vision import ComputerVisionCore
 # INIT VISION WIZARD (Tkinter)
 # =========================================================
 class InitVisionWizard(tk.Toplevel):
-    def __init__(self, master, frame: np.ndarray, params: VisionParamsManager):
+    def __init__(self, master, frame: np.ndarray):
         super().__init__(master)
 
         self.frame = frame
-        self.params = params
+        self.params = VisionParamsManager()
+        self.params.set_defaults()
         self.step = 0
-        self.steps = ["Detect Robot", "Canny", "Polygons", "Save"]
+        self.steps = ["Colors", "Canny", "Polygons", "Save"]
 
         # --- Window setup ---
         self.title("Vision Initialization Wizard")
@@ -68,6 +69,11 @@ class InitVisionWizard(tk.Toplevel):
             w["scale"].destroy()
         self.slider_vars.clear()
 
+        # Remove old labels
+        for child in self.winfo_children():
+            if isinstance(child, tk.Label) and child not in [self.canvas]:
+                child.destroy()
+
         # Remove Save button if not needed
         if self.save_btn:
             self.save_btn.destroy()
@@ -76,7 +82,10 @@ class InitVisionWizard(tk.Toplevel):
         step_name = self.steps[self.step]
         
         # ----- Step UI -----
-        if step_name == "Canny":
+        if step_name == "Colors":
+            self.init_colors_sliders()
+
+        elif step_name == "Canny":
             self.init_canny_sliders()
 
         elif step_name == "Polygons":
@@ -96,7 +105,37 @@ class InitVisionWizard(tk.Toplevel):
             self.next_btn.grid()
 
         self.update_canvas()
+
+    # =========================================================
+    # POLYGON SLIDERS  (FIXED)
+    # =========================================================
+    def init_colors_sliders(self):
+        row = 2
+        for key, val in self.params.color_params.items():
+
+            var = tk.IntVar(value=val)
+
+            # IMPORTANT FIX: bind the key in the lambda
+            scale = ttk.Scale(
+                self,
+                from_=1,
+                to=179,
+                variable=var,
+                command=lambda e, k=key: self.update_colors_param(k)
+            )
+            scale.grid(row=row, column=0, columnspan=4, sticky="ew")
+
+            tk.Label(self, text=key).grid(row=row, column=0, sticky="w")
+
+            self.slider_vars[key] = {"var": var, "scale": scale}
+            row += 1
         
+    def update_colors_param(self, key):
+        """Fixes slider closure bug."""
+        self.params.color_params[key] = self.slider_vars[key]["var"].get()
+        self.update_canvas()
+
+
     # =========================================================
     # CANNY SLIDERS
     # =========================================================
@@ -130,8 +169,8 @@ class InitVisionWizard(tk.Toplevel):
             # IMPORTANT FIX: bind the key in the lambda
             scale = ttk.Scale(
                 self,
-                from_=1,
-                to=4000,
+                from_=100,
+                to=200000,
                 variable=var,
                 command=lambda e, k=key: self.update_poly_param(k)
             )
@@ -181,15 +220,22 @@ class InitVisionWizard(tk.Toplevel):
         frame_copy = self.frame.copy()
 
         # --- Process based on current step ---
-        if self.steps[self.step] == "Detect Robot":
-            robot_state = ComputerVisionCore.detect_robot(frame_copy)
-            if robot_state.get("found"):
+        if self.steps[self.step] == "Colors":
+            robot_state = ComputerVisionCore.detect_robot(frame_copy,
+                                            R_hmin=self.params.color_params.get("R_hmin"),
+                                            R_hmax=self.params.color_params.get("R_hmax"),
+                                            G_hmin=self.params.color_params.get("G_hmin"),
+                                            G_hmax=self.params.color_params.get("G_hmax"),
+                                            S_min=self.params.color_params.get("S_min"),
+                                            V_min=self.params.color_params.get("V_min"))
+            if robot_state.get("found") and robot_state["robot_mask"] is not None:
+                frame_copy = robot_state["robot_mask"]
                 cv2.circle(frame_copy, robot_state["red_center"], 5, (0,0,255), -1)
                 cv2.circle(frame_copy, robot_state["green_center"], 5, (0,255,0), -1)
                 cv2.circle(frame_copy, robot_state["center"], 5, (255,0,0), -1)
 
         if self.steps[self.step] == "Canny":
-            sigma = self.params.canny_params.get("sigma")
+            sigma = self.params.canny_params.get("sigma") if self.params.canny_params.get("sigma") else 0.33
             low, high = ComputerVisionCore.init_canny(frame_copy, sigma)
             self.params.canny_params["low"] = low
             self.params.canny_params["high"] = high

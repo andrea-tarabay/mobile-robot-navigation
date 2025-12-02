@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Dict
 
 # =========================================================
 # CONSTANTS
@@ -15,7 +14,6 @@ class VisionParamsManager:
     def __init__(self, path=DEFAULT_FILE):
         self.path = path
 
-        # Default empty params
         self.color_params = {}
         self.areas_params = {}
         self.canny_params = {}
@@ -51,3 +49,38 @@ class VisionParamsManager:
             with open(self.path, "r") as f:
                 data = json.load(f)
                 self.set_params(data)
+
+    def set_defaults(self):
+        self.color_params = {
+            "R_hmin": 165,
+            "R_hmax": 15,
+            "G_hmin": 40,
+            "G_hmax": 90,
+            "S_min": 40,
+            "V_min": 40
+        }
+        self.areas_params = {
+            "min_obstacle_area": 20000,
+            "min_red_area": 150,
+            "max_red_area": 2000,
+            "min_green_area": 150,
+            "max_green_area": 2000,
+            "min_blue_area": 150,
+            "max_blue_area": 2000,
+            "min_robot_area": 5000,
+            "max_robot_area": 50000,
+            "margin": 10
+        }
+        self.canny_params = {
+            "sigma": 0.33,
+            "low": 100,
+            "high": 200
+        }
+        self.poly_params = {
+            "min_area": 3943
+        }
+        self.robot_params = {
+            "robot_length_mm": 100,
+            "robot_width_mm": 90,
+            "robot_radius_mm": 110
+        }

@@ -13,7 +13,7 @@ class CameraCaptureThread(threading.Thread):
     Background thread that continuously captures frames from a camera device
     and pushes the latest frame to a queue.Queue(maxsize=1). It never touches Tk.
     """
-    def __init__(self, queue: queue.Queue, device_index: int = 0, warmup_timeout: float = 2.0, smooth_alpha=0.5):
+    def __init__(self, queue: queue.Queue, device_index: int = 0, warmup_timeout: float = 2.0):
         super().__init__(daemon=True)
         self.queue = queue
         self.device_index = device_index
@@ -63,18 +63,18 @@ class CameraCaptureThread(threading.Thread):
     # -------------------------------
     # Utility: EMA for 2D points
     # -------------------------------
-    def _smooth_point(self, prev, new):
+    def _smooth_point(self, prev, new, alpha: float):
         """Exponential smoothing for 2D points."""
         if new is None:
             return prev  # keep previous
         if prev is None:
             return np.array(new, dtype=float)
-        return self.alpha * np.array(new) + (1 - self.alpha) * prev
+        return alpha * np.array(new) + (1 - alpha) * prev
 
     # -------------------------------
     # Utility: EMA for angle
     # -------------------------------
-    def _smooth_angle(self, prev, new):
+    def _smooth_angle(self, prev, new, alpha: float):
         """Exponential smoothing for angles, avoiding wrap-around jumps."""
         if new is None:
             return prev
@@ -82,12 +82,12 @@ class CameraCaptureThread(threading.Thread):
             return new
         # shortest angular difference
         diff = np.arctan2(np.sin(new - prev), np.cos(new - prev))
-        return prev + self.alpha * diff
+        return prev + alpha * diff
 
     # -------------------------------
     # Apply EMA to raw robot detection
     # -------------------------------
-    def smooth_robot_pose(self, robot):
+    def smooth_robot_pose(self, robot, alpha: float = 0.6):
         """Apply EMA smoothing to raw robot detection."""
         if not robot["found"]:
             return None  # No detection, skip
@@ -140,11 +140,11 @@ class CameraCaptureThread(threading.Thread):
                 continue
 
             # Process frame:
-            process_frame = frame.copy()
-            smoothed_robot = self.process_frame(process_frame)
+            processed_frame = frame.copy()
+            smoothed_robot, processed_frame = self.process_frame(processed_frame)
 
             # Push latest frame into queue, keep only newest frame (maxsize=1)
-            self.push_processed_data(process_frame, smoothed_robot)
+            self.push_processed_data(processed_frame, smoothed_robot)
 
             # throttle capture rate slightly to reduce CPU (adjust as needed)
             time.sleep(0.01)
@@ -204,6 +204,8 @@ class CameraCaptureThread(threading.Thread):
                 thickness=2,
                 tipLength=0.7
             )
+        
+        return smoothed_robot, overlay_frame
 
     def push_processed_data(self, frame: np.ndarray, robot: dict):
         """

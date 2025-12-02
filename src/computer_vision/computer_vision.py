@@ -65,10 +65,6 @@ def score_pair(red, green):
     dist = np.sqrt(dx*dx + dy*dy)
     return float(red["circ"] + green["circ"] - 0.0015 * dist - 1.5 * rel_diff)
 
-def strengthen_edges(edges, ksize=3, iterations=1):
-    k = cv2.getStructuringElement(cv2.MORPH_RECT, (ksize, ksize))
-    return cv2.morphologyEx(edges, cv2.MORPH_CLOSE, k, iterations=iterations)
-
 # =========================================================
 # ComputerVisionCore: stateless processing
 # =========================================================
@@ -92,11 +88,16 @@ class ComputerVisionCore:
             robot_mask,
             smooth_center, smooth_theta
         """
+        overlay = frame.copy()
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
         # Rough masks
         rough_red_mask = hsv_mask_circular(hsv, R_hmin, R_hmax, S_min, V_min)
         rough_green_mask = hsv_mask_circular(hsv, G_hmin, G_hmax, S_min, V_min)
+
+        overlay[rough_red_mask > 0] = (0, 0, 255)
+        overlay[rough_green_mask > 0] = (0, 255, 0)
+        combined_mask = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
 
         # Find candidate circles first
         reds = find_circle_candidates(rough_red_mask, min_area=10, max_area=10000)
@@ -147,6 +148,7 @@ class ComputerVisionCore:
             "red_area": br["area"],
             "green_center": bg["center"],
             "green_area": bg["area"],
+            "robot_mask": combined_mask
         }
     
     @staticmethod

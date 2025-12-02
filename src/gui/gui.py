@@ -115,7 +115,7 @@ class Gui(tk.Tk):
     # -------------------------
     def _set_buttons_wait_for_init(self):
         """At application start:"""
-        self.init_btn.config(state="disabled")
+        self.init_btn.config(state="normal")
         self._check_params_file()
         self.stop_btn.config(state="disabled")
         self.pause_btn.config(state="disabled")
@@ -123,7 +123,7 @@ class Gui(tk.Tk):
 
     def _set_buttons_ready(self):
         """At application start: Start enabled, others disabled."""
-        self.init_btn.config(state="disabled")
+        self.init_btn.config(state="normal")
         self._check_params_file()
         self.stop_btn.config(state="disabled")
         self.pause_btn.config(state="disabled")
@@ -193,11 +193,8 @@ class Gui(tk.Tk):
             self.init_btn.config(state="normal")
             return
 
-        # 2. Load parameters manager
-        params = VisionParamsManager()
-
         # 3. Pass the captured FRAME to the wizard
-        wizard = InitVisionWizard(self, frame, params)  # <-- FIXED
+        wizard = InitVisionWizard(self, frame)  # <-- FIXED
 
         wizard.grab_set()           # modal window
         self.wait_window(wizard)    # wait for wizard to finish
