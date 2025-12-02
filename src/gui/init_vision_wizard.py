@@ -229,7 +229,6 @@ class InitVisionWizard(tk.Toplevel):
                 cv2.circle(frame_copy, robot_state["center"], 5, (255,0,0), -1)
 
             goal = ComputerVisionCore.detect_goal(frame_copy, self.params.color_params)
-            print(goal["found"], goal["center"])
             if goal.get("found") and goal["goal_mask"] is not None:
                 frame_copy = goal["goal_mask"]
                 cv2.circle(frame_copy, goal["center"], 5, (0,255,255), -1)
