@@ -10,6 +10,48 @@ from .local_occupancy import (
     sensor_angles,
 )
 
+
+import numpy as np
+
+def densify_path(path, step=20.0):
+    """
+    Densify a polyline path by inserting points between waypoints.
+
+    path : list/array of shape (N, 2)  (e.g. [(x0,y0), (x1,y1), ...])
+    step : desired spacing between points (same unit as path coordinates)
+
+    Returns
+    -------
+    dense_path : np.ndarray of shape (M, 2)
+    """
+    path_arr = np.asarray(path, dtype=float)
+    if path_arr.shape[0] < 2:
+        return path_arr
+
+    dense_segments = []
+
+    for i in range(len(path_arr) - 1):
+        p0 = path_arr[i]
+        p1 = path_arr[i + 1]
+        seg_vec = p1 - p0
+        seg_len = np.linalg.norm(seg_vec)
+        if seg_len < 1e-9:
+            continue
+
+        # number of points for this segment (>= 2)
+        n_pts = max(2, int(seg_len / step) + 1)
+
+        # interpolate from p0 to just before p1
+        t = np.linspace(0.0, 1.0, n_pts, endpoint=False)
+        pts = p0[None, :] + t[:, None] * seg_vec[None, :]
+        dense_segments.append(pts)
+
+    # add the last original waypoint
+    dense_segments.append(path_arr[-1][None, :])
+
+    dense_path = np.vstack(dense_segments)
+    return dense_path
+
 def wrap_to_pi(angle: float) -> float:
     """Wrap any angle (rad) to (-pi, pi]."""
     return (angle + math.pi) % (2.0 * math.pi) - math.pi
@@ -200,7 +242,7 @@ class LocalNavigator:
             return None, None
         
         N = path.shape[0]
-                # Clamp path_idx within [0, N-1]
+        # Clamp path_idx within [0, N-1]
         if self.path_idx >= N:
             self.path_idx = N - 1
         if self.path_idx < 0:
@@ -289,7 +331,7 @@ class LocalNavigator:
     
 
     def compute_virtual_goal(self, pose, path, sensor_vals=None):
-        if not path:                           # None or empty list
+        if path is None or len(path) == 0:
             return None, None, None, None
 
         path_arr = np.asarray(path, dtype=float)
@@ -305,7 +347,7 @@ class LocalNavigator:
             F_att = (self.cfg.k_att / norm_att) * F_att
 
         F_rep = self._repulsive_vector()
-        F_rep = self._repulsive_vector()
+       
         if sensor_vals is None or max(sensor_vals) < 300:
             # no significant obstacle: go straight to lookahead
             return LA_world, LA_world, F_att, np.zeros(2)
@@ -358,13 +400,26 @@ class GoToGoalController:
 
         y_forward = math.cos(theta) * dx + math.sin(theta) * dy
         x_left = -math.sin(theta) * dx + math.cos(theta) * dy
-
+        print("x:",x_left,"y:", y_forward)
         alpha = math.atan2(x_left, y_forward)
         alpha = wrap_to_pi(alpha)
 
+
+        print("alpha", alpha)
         alpha_dead = 5.0 * math.pi / 180.0
         if abs(alpha) < alpha_dead:
             alpha = 0.0
+        """           
+        alpha_dead = 30.0 * math.pi / 180.0  # ±5°
+
+        # Deadzone autour de +π
+        if abs(alpha - math.pi) < alpha_dead:
+            alpha = math.pi
+
+        # Deadzone autour de -π
+        elif abs(alpha + math.pi) < alpha_dead:
+            alpha = -math.pi
+        """
 
         v = self.g.Kv * rho
         w = self.g.Komega * alpha
@@ -420,9 +475,9 @@ navigator = LocalNavigator(grid, cfg)
 
 gains = GoToGoalGains(
     Kv=2.0,
-    Komega=1.0,
+    Komega=10.0,
     v_max=0.3,
-    w_max=3.0,
+    w_max=7.0,
 )
 kin = ThymioKinematics()
 g2g = GoToGoalController(gains, kin)

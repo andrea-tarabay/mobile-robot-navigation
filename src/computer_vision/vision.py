@@ -485,7 +485,7 @@ if __name__ == "__main__":
     Paramètre show_debug pour afficher ou non le retour vision.
     """
     vision = Vision()
-    show_debug = True           # mettre False si un autre module consomme juste les données
+    show_debug = False           # mettre False si un autre module consomme juste les données
     mode_image = False           # False pour webcam
     image_name = "table10.jpg"   # change le nom si nécessaire
 
@@ -523,7 +523,7 @@ if __name__ == "__main__":
                 # si pas de debug, tu peux pousser les données ailleurs
                 polys, st = res
                 # exemple d'impression minimaliste
-                print(f"Robot found={st['found']} | centre={st['center']} | obstacles={len(polys)}", end="\r")
+                print(f"Robot found={st['found']} | centre={st['center']}.  angle={st['theta']} | obstacles={len(polys)}", end="\r")
 
         cap.release()
         cv2.destroyAllWindows()
