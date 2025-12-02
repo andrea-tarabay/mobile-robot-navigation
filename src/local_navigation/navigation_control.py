@@ -198,10 +198,22 @@ class LocalNavigator:
         x, y, theta = pose
         if path is None or path.shape[0] == 0:
             return None, None
+        
+        N = path.shape[0]
+                # Clamp path_idx within [0, N-1]
+        if self.path_idx >= N:
+            self.path_idx = N - 1
+        if self.path_idx < 0:
+            self.path_idx = 0
 
         start_idx = self.path_idx
-        end_idx = min(path.shape[0], start_idx + self.cfg.max_lookahead_points)
+        end_idx = min(N, start_idx + self.cfg.max_lookahead_points)
         segment = path[start_idx:end_idx]
+           
+         # If still empty, just say "we're at the last point"
+        if segment.size == 0:
+            return path[-1], N - 1
+    
         dists2 = (segment[:, 0] - x) ** 2 + (segment[:, 1] - y) ** 2
         k_local = int(np.argmin(dists2))
         k_global = start_idx + k_local
@@ -210,7 +222,7 @@ class LocalNavigator:
         target_idx = k_global
         accum = 0.0
         while (
-            target_idx + 1 < path.shape[0]
+            target_idx + 1 < N
             and accum < self.cfg.lookahead_dist_m
             and target_idx - k_global < self.cfg.max_lookahead_points
         ):
@@ -408,9 +420,9 @@ navigator = LocalNavigator(grid, cfg)
 
 gains = GoToGoalGains(
     Kv=2.0,
-    Komega=3.0,
-    v_max=0.18,
-    w_max=2.0,
+    Komega=1.0,
+    v_max=0.3,
+    w_max=3.0,
 )
 kin = ThymioKinematics()
 g2g = GoToGoalController(gains, kin)
