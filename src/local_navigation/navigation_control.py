@@ -93,21 +93,23 @@ def obstacles_pos_from_sensor_vals(sensor_vals):
       x_left  > 0  -> obstacle is on the LEFT
       x_left  < 0  -> obstacle is on the RIGHT
       y_forward > 0 -> obstacle is in FRONT
+
+    Note: sensor_pos_from_center is defined with axes
+    x_left ( + to robot's left ) and y_forward ( + to the front ).
     """
     dists_cm = [sensor_val_to_cm_dist(v) for v in sensor_vals]
 
     obstacles = []
-    for (sx_forward, sy_left), d, a in zip(sensor_pos_from_center, dists_cm, sensor_angles):
+    for (sx_left, sy_forward), d, a in zip(sensor_pos_from_center, dists_cm, sensor_angles):
         if not np.isfinite(d):
             continue
 
-        # In original frame (x_forward, y_left):
-        obs_forward = sx_forward + d * math.cos(a)
-        obs_left    = sy_left    + d * math.sin(a)
+        # Original frame: x_left, y_forward
+        obs_left    = sx_left    + d * math.cos(a)
+        obs_forward = sy_forward + d * math.sin(a)
 
-        # Convert to our robot frame (x_left, y_forward)
-        x_left     = obs_left
-        y_forward  = obs_forward
+        x_left    = obs_left
+        y_forward = obs_forward
 
         obstacles.append([x_left, y_forward])
 
@@ -201,7 +203,7 @@ class LocalNavConfig:
     lookahead_dist_m: float = 0.15
     max_lookahead_points: int = 30
     occ_threshold: float = 0.3 
-    rep_influence_radius: float = 0.35
+    rep_influence_radius: float = 0.8
     k_att: float = 1.0
     k_rep: float = 0.6
     virt_goal_dist_m: float = 0.12
@@ -305,7 +307,15 @@ class LocalNavigator:
                 if d < eps or d > R:
                     continue
 
-                dir_vec = np.array([-x_m / d, -y_m / d])
+                lat = -x_m / d
+                back = -y_m / d
+
+                dir_vec = np.array([lat, 0.4 * back], dtype=float)
+
+                n = np.linalg.norm(dir_vec)
+                if n < 1e-6:
+                    continue
+                dir_vec /= n
 
                 # use a smooth, bounded-ish influence: stronger when closer,
                 # but not blowing up to infinity
@@ -321,7 +331,8 @@ class LocalNavigator:
             # ---- FINAL SATURATION on F_rep magnitude ----
             # we don't want repulsion to be 100x the attraction,
             # otherwise the robot can get thrown far off the path.
-            max_F_rep = 1.85 * self.cfg.k_att  # repulsion can be up to ~1.5x attraction
+            max_F_rep = 2.0 * self.cfg.k_att  # repulsion can be up to ~2.0x attraction
+            
             norm_rep = np.linalg.norm(F_rep)
             if norm_rep > max_F_rep:
                 F_rep = F_rep * (max_F_rep / norm_rep)
@@ -355,7 +366,25 @@ class LocalNavigator:
          #   F_rep *= 0.2
 
         F_tot = F_att + F_rep
-        norm_tot = np.linalg.norm(F_tot)
+
+        if sensor_vals is not None:
+            left_side = max(sensor_vals[0], sensor_vals[1])
+            right_side = max(sensor_vals[3], sensor_vals[4])
+
+            if left_side > 1200:
+                # obstacle gauche -> pousse l’angle à droite
+                F_tot[0] -= 0.25
+
+            if right_side > 1200:
+                # obstacle droite -> pousse l’angle à gauche
+                F_tot[0] += 0.25
+
+
+        # Si obstacle FRONT CENTER très fort
+        if sensor_vals is not None and sensor_vals[2] > 1500:
+            F_tot[1] = min(F_tot[1], 0.05)
+            
+        norm_tot = np.linalg.norm(F_tot)#Normalisatiopn 
         if norm_tot < 1e-6:
             F_tot = np.array([0.0, 1.0], dtype=float)
             norm_tot = 1.0
@@ -363,7 +392,7 @@ class LocalNavigator:
         dir_robot = F_tot / norm_tot
         virt_robot = self.cfg.virt_goal_dist_m * dir_robot
         virt_world = self.robot_to_world(pose, virt_robot)
-
+        
         return virt_world, LA_world, F_att, F_rep
 
 
