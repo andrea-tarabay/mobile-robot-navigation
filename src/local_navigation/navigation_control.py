@@ -399,16 +399,17 @@ class GoToGoalController:
         rho = math.hypot(dx, dy)
 
         y_forward = math.cos(theta) * dx + math.sin(theta) * dy
-        x_left = -math.sin(theta) * dx + math.cos(theta) * dy
+        x_left = math.sin(theta) * dx - math.cos(theta) * dy
         print("x:",x_left,"y:", y_forward)
         alpha = math.atan2(x_left, y_forward)
-        alpha = wrap_to_pi(alpha)
-
-
         print("alpha", alpha)
+        alpha = wrap_to_pi(alpha)
+        print("wraped alpha", alpha)
+
         alpha_dead = 5.0 * math.pi / 180.0
         if abs(alpha) < alpha_dead:
             alpha = 0.0
+        print("dead_alpha", alpha)
         """           
         alpha_dead = 30.0 * math.pi / 180.0  # ±5°
 
@@ -423,9 +424,10 @@ class GoToGoalController:
 
         v = self.g.Kv * rho
         w = self.g.Komega * alpha
-
+        print("v,w before clamp:", v,"  ",w)
         v = max(-self.g.v_max, min(self.g.v_max, v))
         w = max(-self.g.w_max, min(self.g.w_max, w))
+        print("v,w after clamp:", v,"  ",w)
 
         return v, w, rho, alpha
 
