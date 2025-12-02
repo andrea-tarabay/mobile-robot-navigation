@@ -6,6 +6,7 @@ import time
 import cv2
 import numpy as np
 import os
+import platform
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.patches import Ellipse
@@ -168,11 +169,7 @@ class Gui(tk.Tk):
         self.status_label.config(text="Opening CV initialization wizard...")
 
         # 1. Capture ONE frame directly from the camera
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            self.status_label.config(text="Camera not found.")
-            self.init_btn.config(state="normal")
-            return
+        cap = self.open_camera(device_index=0)
 
         # Warm-up: try to grab a valid frame within 2 seconds
         start = time.time()
@@ -202,6 +199,25 @@ class Gui(tk.Tk):
         # 4. Show updated UI
         self.status_label.config(text="CV Initialized!")
         self._set_buttons_ready()
+
+    def open_camera(self, device_index: int):
+        system = platform.system()
+        
+        if system == "Darwin":
+            # macOS: use AVFoundation
+            cap = cv2.VideoCapture(device_index)
+        elif system == "Windows":
+            # Windows: use DirectShow and add a device offset
+            cap = cv2.VideoCapture(device_index + 1, cv2.CAP_DSHOW)
+        else:
+            # Linux / default
+            cap = cv2.VideoCapture(device_index)
+        
+        if not cap.isOpened():
+            cap.release()
+            raise RuntimeError(f"Cannot open camera index {device_index} on {system}")
+        
+        return cap
 
     def on_start(self):
         """Start both the camera capture and the FSM worker."""
