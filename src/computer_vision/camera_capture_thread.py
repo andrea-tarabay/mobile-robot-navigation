@@ -8,6 +8,7 @@ from shapely.geometry import Polygon
 
 from computer_vision.vision_params_manager import VisionParamsManager
 from computer_vision.computer_vision import ComputerVisionCore
+from utils.camera_utils import find_available_camera
 
 class CameraCaptureThread(threading.Thread):
     """
@@ -109,7 +110,7 @@ class CameraCaptureThread(threading.Thread):
         return smoothed
 
     def run(self):
-        cap = self.open_camera(self.device_index)
+        _, cap = find_available_camera()
 
         # Initialize static obstacles
         self.init_obstacles_and_goal(cap)
@@ -135,26 +136,6 @@ class CameraCaptureThread(threading.Thread):
             time.sleep(0.01)
 
         cap.release()
-
-    def open_camera(self, device_index: int):
-        system = platform.system()
-        
-        if system == "Darwin":
-            # macOS: use AVFoundation
-            cap = cv2.VideoCapture(device_index)
-        elif system == "Windows":
-            # Windows: use DirectShow and add a device offset
-            cap = cv2.VideoCapture(device_index + 1, cv2.CAP_DSHOW)
-        else:
-            # Linux / default
-            cap = cv2.VideoCapture(device_index)
-        
-        if not cap.isOpened():
-            cap.release()
-            raise RuntimeError(f"Cannot open camera index {device_index} on {system}")
-        
-        return cap
-
 
     def init_obstacles_and_goal(self, cap):
         first_frame = self._grab_first_valid_frame(cap, self.warmup_timeout)
