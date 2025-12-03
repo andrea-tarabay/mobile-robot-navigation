@@ -649,9 +649,9 @@ cfg = LocalNavConfig(
     lookahead_dist_m=0.15,
     max_lookahead_points=30,
     occ_threshold=0.3,
-    rep_influence_radius=0.5,
+    rep_influence_radius=0.8,#0.05 was before
     k_att=3,
-    k_rep=0.5,
+    k_rep=0.6, #0.5 was before
     virt_goal_dist_m=0.20,
 )
 
