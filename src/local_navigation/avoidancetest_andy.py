@@ -600,13 +600,13 @@ class GoToGoalController:
         return uL, uR
 
     def compute_motor_commands(self, pose, goal_xy, sensor_vals=None,
-                               tol=0.02, stop_if_close=True):
+                               tol=0.02, stop_if_close=True, dt=0.1):
         """
         Same as before, but now:
         - Uses side + center heuristics (if sensor_vals provided).
         - Returns v,w in the info dict (for odometry).
         """
-        v, w, rho, alpha = self.compute_unicycle_cmd(pose, goal_xy)
+        v, w, rho, alpha = self.compute_unicycle_cmd(pose, goal_xy, dt=dt)
         stopped = False
 
         if stop_if_close and rho < tol:
@@ -671,7 +671,7 @@ gains = GoToGoalGains(
     Kd_omega=3,
     int_alpha_max=0.5,
     v_max=0.25,
-    w_max=2.5,
+    w_max=2,
 )
 kin = ThymioKinematics()
 g2g = GoToGoalController(gains, kin)
