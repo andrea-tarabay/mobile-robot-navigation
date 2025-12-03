@@ -7,6 +7,7 @@ import asyncio
 from tdmclient import ClientAsync, aw
 
 from pose_estimation.extended_kalman_filter import ExtendedKalmanFilter
+from pose_estimation.differential_drive_system import DifferentialDriveSystem
 from global_navigation.global_nav2 import GlobalNavigator
 from computer_vision.computer_vision import ComputerVisionCore
 
@@ -53,20 +54,31 @@ class Fsm(threading.Thread):
         self.__resume = threading.Event() # ID used to pause the thread
 
         # modules for navigation
-        #self.ekf = ekf
         #self.local_nav = local_nav
         #self.g2g = g2g
 
         # external interfaces
         self.data_queue = data_queue
-        self.node = None
-        self.client = None
 
         # internal state
+        self.node = None
+        self.client = None
         self.dt = dt
         self.current_path = None
         self.last_visible_pose = None
         self.kidnapped = False
+
+        # EKF for pose estimation
+        self.ekf = ExtendedKalmanFilter(
+            mu0 = np.array([0.0, 0.0, 0.0]),
+            Sigma0 = np.eye(3) * 1.0,
+            system = DifferentialDriveSystem(dt=self.dt, 
+                        lambda_=0.39735099337748336, 
+                        axle_length=93.5, 
+                        motion_noise_cov=np.eye(3)*0.03, 
+                        measurement_noise_cov=np.eye(3)*0.01
+                    )
+        )
 
         # thresholds
         self.max_no_vision_time = 0.8  # seconds before declaring "kidnapped"
@@ -83,6 +95,7 @@ class Fsm(threading.Thread):
             self.client = ClientAsync()
             self.node = aw(self.client.wait_for_node())
             aw(self.node.lock())
+            aw(self.node.wait_for_variables({"prox.horizontal", "motor.left.speed", "motor.right.speed"}))
         except Exception as e:
             print(f"[FSM] Could not connect to Thymio: {e}")
             return
@@ -134,16 +147,16 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             # 2) Robotics sensors
             # --------------------------------------------------------
-            """sensor_vals = list(self.node.v.prox.horizontal)
+            sensor_vals = list(self.node.v.prox.horizontal)
             u_motor = np.array([
                 self.node.v.motor.left.speed,
                 self.node.v.motor.right.speed
-            ])"""
+            ])
 
             # --------------------------------------------------------
             # 3) EKF update → estimated pose
             # --------------------------------------------------------
-            """pose_pred, P_pred = self.ekf.predict(u_motor)
+            pose_pred, P_pred = self.ekf.predict(u_motor)
 
             if robot_det["found"]:
                 self.last_vision_time = time.time()
@@ -154,10 +167,7 @@ class Fsm(threading.Thread):
                 self.last_visible_pose = pose
             else:
                 # No new measurement
-                pose, P = pose_pred, P_pred"""
-            pose = np.array([robot_det["center"][0],
-                              robot_det["center"][1],
-                              robot_det["theta"]])
+                pose, P = pose_pred, P_pred
 
             # --------------------------------------------------------
             # 4) Kidnapped robot detection
