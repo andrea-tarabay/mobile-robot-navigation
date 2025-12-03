@@ -649,9 +649,9 @@ cfg = LocalNavConfig(
     lookahead_dist_m=0.15,
     max_lookahead_points=30,
     occ_threshold=0.3,
-    rep_influence_radius=0.3,
-    k_att=2,
-    k_rep=0.3,
+    rep_influence_radius=0.5,
+    k_att=3,
+    k_rep=0.5,
     virt_goal_dist_m=0.20,
 )
 
@@ -665,10 +665,10 @@ navigator = LocalNavigator(grid, cfg)
 # )
 
 gains = GoToGoalGains(
-    Kv=2.0,
-    Komega=4.0,       # smaller than 4.0 now that we have D
-    Ki_omega=0,     # you can try 0.1 later
-    Kd_omega=3,
+    Kv=3.0,
+    Komega=3.0,       # smaller than 4.0 now that we have D
+    Ki_omega=0.1,     # you can try 0.1 later
+    Kd_omega=2,
     int_alpha_max=0.5,
     v_max=0.25,
     w_max=2,
