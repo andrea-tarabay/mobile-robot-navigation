@@ -41,10 +41,13 @@ class Gui(tk.Tk):
 
         self.update_rate_ms = update_rate_ms  # refresh rate for plot updates
 
-        # Threads / queues
-        self.queue = queue.Queue(maxsize=1)  # latest frame only
-        self.camera_thread: CameraCaptureThread | None = None
+        # ----------------------------------------
+        # THREAD SAFE QUEUES
+        # ----------------------------------------
+        self.cv_queue = queue.Queue(maxsize=1)  # latest frame only
+        self.fsm_queue = queue.Queue()
 
+        self.camera_thread: CameraCaptureThread | None = None
         self.thread_fsm: Fsm | None = None
 
         # UI layout
@@ -52,14 +55,14 @@ class Gui(tk.Tk):
 
         # Polling loops
         self._schedule_camera_poll()
-        # Note: we don't need a separate EKF polling loop because Fsm will call GUI via after()
+        self._schedule_fsm_ui_poll()
 
         # Ensure clean shutdown
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    # -------------------------
-    # UI construction
-    # -------------------------
+    # ==========================================================================
+    # BUILD UI
+    # ==========================================================================
     def _build_ui(self):
         top_frame = ttk.Frame(self)
         top_frame.pack(side="top", fill="x", padx=8, pady=8)
@@ -87,13 +90,28 @@ class Gui(tk.Tk):
         # Button state at startup
         self._set_buttons_wait_for_init()
 
-        # CV image frame (above plot)
+        # Widgets for FSM data (NEW)
+        self.lbl_pose = ttk.Label(self, text="Pose: ---")
+        self.lbl_pose.pack()
+
+        self.lbl_kidnapped = ttk.Label(self, text="Kidnapped: ---")
+        self.lbl_kidnapped.pack()
+
+        self.lbl_obs = ttk.Label(self, text="Obstacles: ---")
+        self.lbl_obs.pack()
+
+        self.lbl_goal = ttk.Label(self, text="Goal: ---")
+        self.lbl_goal.pack()
+
+        # ------------------------
+        # Camera display
         cv_frame = ttk.Frame(self)
         cv_frame.pack(side="top", fill="x", expand=False, padx=8, pady=(0, 8))
         self.cv_image_label = tk.Label(cv_frame)
         self.cv_image_label.pack()
 
-        # Matplotlib plot frame (fills remainder)
+        # ------------------------
+        # Matplotlib area
         plot_frame = ttk.Frame(self)
         plot_frame.pack(side="top", fill="both", expand=True, padx=8, pady=(0, 8))
 
@@ -111,9 +129,9 @@ class Gui(tk.Tk):
         toolbar.update()
         toolbar.pack(side="top", fill="x")
 
-    # -------------------------
-    # Buttons state helpers
-    # -------------------------
+    # ==========================================================================
+    # BUTTON STATE HELPERS
+    # ==========================================================================
     def _set_buttons_wait_for_init(self):
         """At application start:"""
         self.init_btn.config(state="normal")
@@ -147,9 +165,9 @@ class Gui(tk.Tk):
     def _set_buttons_stopped(self):
         self._set_buttons_ready()
 
-    # -------------------------
-    # Check JSON
-    # -------------------------
+    # ==========================================================================
+    # INIT
+    # ==========================================================================
     def _check_params_file(self):
         """Enable start button if params file exists, otherwise force initialization."""
         params_file = VisionParamsManager().path
@@ -160,9 +178,9 @@ class Gui(tk.Tk):
             self.start_btn.config(state="disabled")
             self.status_label.config(text="Initialization required (no parameters found)")
 
-    # -------------------------
-    # Button callbacks
-    # -------------------------
+    # ==========================================================================
+    # BUTTON CALLBACKS
+    # ==========================================================================
     def on_initialize(self):
         """Start computer vision initialization."""
         self.init_btn.config(state="disabled")
@@ -204,7 +222,7 @@ class Gui(tk.Tk):
         """Start both the camera capture and the FSM worker."""
         # start camera thread (recreate each time)
         if self.camera_thread is None or not self.camera_thread.is_alive():
-            self.camera_thread = CameraCaptureThread(queue=self.queue, device_index=0)
+            self.camera_thread = CameraCaptureThread(queue=self.cv_queue, device_index=0)
             self.camera_thread.start()
             print("Camera capture started.")
 
@@ -212,7 +230,7 @@ class Gui(tk.Tk):
         if self.thread_fsm is None or not self.thread_fsm.is_alive():
             # pass the safe GUI-scheduling callback
             safe_cb = self._make_fsm_gui_callback()
-            self.thread_fsm = Fsm(update_callback=safe_cb)
+            self.thread_fsm = Fsm(data_queue=self.cv_queue, ui_callback=safe_cb)
             self.thread_fsm.start()
             print("FSM started.")
 
@@ -223,20 +241,13 @@ class Gui(tk.Tk):
         """Stop camera capture and FSM worker (if running)."""
         # stop FSM
         if self.thread_fsm is not None:
-            try:
-                self.thread_fsm.stop()
-            except Exception:
-                pass
+            self.thread_fsm.stop()
             self.thread_fsm = None
 
         # stop camera
         if self.camera_thread is not None:
-            try:
-                self.camera_thread.stop()
-                # optionally join briefly
-                self.camera_thread.join(timeout=1.0)
-            except Exception:
-                pass
+            self.camera_thread.stop()
+            self.camera_thread.join(timeout=1.0)
             self.camera_thread = None
 
         self._set_buttons_stopped()
@@ -254,9 +265,9 @@ class Gui(tk.Tk):
             self._set_buttons_running()
             self.status_label.config(text="Running")
 
-    # -------------------------
-    # Clean shutdown
-    # -------------------------
+    # ==========================================================================
+    # SHUTDOWN
+    # ==========================================================================
     def _on_close(self):
         """Make sure background threads are stopped before exit."""
         self.on_stop()
@@ -265,35 +276,90 @@ class Gui(tk.Tk):
         self.destroy()
 
 
-    # -------------------------
+    # ==========================================================================
     # Camera / Frame polling
-    # -------------------------
+    # ==========================================================================
     def _schedule_camera_poll(self):
-        """Schedule the periodic GUI poll to read the latest camera frame from queue."""
+        """Display latest camera frame with FSM overlays."""
+        # Get latest camera frame
         try:
-            data = self.queue.get_nowait()
+            cv_frame = self.cv_queue.get_nowait()
+            self._last_cv_frame = cv_frame
         except queue.Empty:
-            data = None
+            cv_frame = getattr(self, "_last_cv_frame", None)
 
-        if data is not None:
-            # convert BGR -> RGB, make PhotoImage and update label (main thread only)
-            try:
-                frame_rgb = cv2.cvtColor(data["frame"], cv2.COLOR_BGR2RGB)
-                pil_img = Image.fromarray(frame_rgb)
-                # resize to a fixed display size or keep original
-                pil_img.thumbnail((640, 480))
-                self._cv_photoimage = ImageTk.PhotoImage(pil_img)  # keep reference
-                self.cv_image_label.config(image=self._cv_photoimage)
-            except Exception as e:
-                # log and ignore; do not crash GUI
-                print("Error displaying frame:", e)
+        # Get last FSM packet
+        fsm_packet = getattr(self, "_last_fsm_packet", None)
 
-        # schedule next poll
+        if cv_frame is not None:
+            frame = cv_frame["frame"].copy()
+
+            # Draw path from FSM if available
+            if fsm_packet is not None:
+                path = fsm_packet.get("path", None)
+                if path:
+                    # Convert path coordinates to integers
+                    pts = [tuple(map(int, p)) for p in path]
+                    for i in range(len(pts) - 1):
+                        cv2.line(frame, pts[i], pts[i+1], (0, 0, 255), 2)
+
+                # Draw robot
+                pose = fsm_packet.get("pose", None)
+                if pose is not None:
+                    cv2.circle(frame, (int(pose[0]), int(pose[1])), 5, (0, 255, 0), -1)
+
+                # Draw goal
+                goal = fsm_packet.get("goal", None)
+                if goal is not None:
+                    cv2.circle(frame, (int(goal[0]), int(goal[1])), 6, (255, 255, 0), -1)
+
+            # Convert to Tk image
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(frame_rgb)
+            pil_img.thumbnail((640, 480))
+            self._cv_photoimage = ImageTk.PhotoImage(pil_img)
+            self.cv_image_label.config(image=self._cv_photoimage)
+
+        # Schedule next poll
         self.after(30, self._schedule_camera_poll)
 
-    # -------------------------
-    # Matplotlib helpers
-    # -------------------------
+
+
+    # ==========================================================================
+    # FSM → GUI POLLING (NEW)
+    # ==========================================================================
+    def _schedule_fsm_ui_poll(self):
+        """
+        Read UI updates pushed by FSM and update widgets.
+        Runs on main thread via Tkinter after().
+        """
+        try:
+            while True:
+                packet = self.fsm_queue.get_nowait()
+                self._handle_fsm_packet(packet)
+        except queue.Empty:
+            pass
+
+        # poll at ~20 Hz
+        self.after(50, self._schedule_fsm_ui_poll)
+
+    # ==========================================================================
+    # Handle FSM UI packets (NEW)
+    # ==========================================================================
+    def _handle_fsm_packet(self, packet):
+        self._last_fsm_packet = packet  # store latest FSM info
+
+        # Update UI labels
+        if "pose" in packet:
+            self.lbl_pose.config(text=f"Pose: {packet['pose']}")
+        if "kidnapped" in packet:
+            self.lbl_kidnapped.config(text=f"Kidnapped: {packet['kidnapped']}")
+        if "obstacle_count" in packet:
+            self.lbl_obs.config(text=f"Obstacles: {packet['obstacle_count']}")
+        if "goal" in packet:
+            self.lbl_goal.config(text=f"Goal: {packet['goal']}")
+
+
     def _setup_plot_axes(self):
         self.ax.clear()
         self.ax.set_title("EKF Mean & Covariance")
@@ -369,7 +435,7 @@ class Gui(tk.Tk):
         Fsm will call this function from its thread: we then call self.after to
         run the actual drawing on the Tk main thread.
         """
-        def _cb(mean_state, cov):
-            # mean_state and cov must be serializable / safe to pass
-            self.after(0, lambda: self._draw_ekf(mean_state, cov))
+        def _cb(packet: dict):
+            self.fsm_queue.put(packet)
+
         return _cb

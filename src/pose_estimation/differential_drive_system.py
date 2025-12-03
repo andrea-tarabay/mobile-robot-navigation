@@ -1,5 +1,5 @@
 import numpy as np
-from src.pose_estimation.nonlinear_system import NonlinearSystem
+from pose_estimation.nonlinear_system import NonlinearSystem
 
 
 class DifferentialDriveSystem(NonlinearSystem):
