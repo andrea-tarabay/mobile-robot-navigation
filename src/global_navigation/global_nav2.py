@@ -4,7 +4,6 @@ from shapely.geometry import Polygon, Point, LineString, box
 from shapely.ops import unary_union
 import pyvisgraph as vg
 
-
 class GlobalNavigator:
     """
     Static class for global path planning from obstacles, start, and goal.
@@ -58,15 +57,15 @@ class GlobalNavigator:
         return merged_list
 
     @staticmethod
-    def outside_obstacle(obstacles, coord, robot_radius_px=None):
+    def not_overlapping_obstacle(obstacles, coord, margin=None):
         """
         Check if a robot at coord is outside all obstacles.
         If robot_radius_px is given, approximate the robot with a square (AABB).
         """
-        if robot_radius_px is not None:
+        if margin is not None:
             # Create axis-aligned bounding box around the robot
             x, y = coord
-            half_r = robot_radius_px
+            half_r = margin
             pose = box(x - half_r, y - half_r, x + half_r, y + half_r)
         else:
             pose = Point(coord[0], coord[1])
@@ -120,10 +119,10 @@ class GlobalNavigator:
         merged_inflated = GlobalNavigator.merge_inflated_obstacles(inflated)
 
         # 4) Validate start and goal positions
-        if not GlobalNavigator.outside_obstacle(merged_inflated, start, robot_radius_px):
+        if not GlobalNavigator.not_overlapping_obstacle(merged_inflated, start, margin=robot_radius_px/2):
             print("[GLOBAL] Start position invalid:", start)
             return None
-        if not GlobalNavigator.outside_obstacle(merged_inflated, goal, robot_radius_px):
+        if not GlobalNavigator.not_overlapping_obstacle(merged_inflated, goal, margin=robot_radius_px/2):
             print("[GLOBAL] Goal position invalid:", goal)
             return None
 
