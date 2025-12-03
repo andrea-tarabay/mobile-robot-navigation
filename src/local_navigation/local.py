@@ -106,11 +106,14 @@ class LocalOccupancyGrid:
                  size_m=0.15,        # grid side [m] 0.6 x 0.6 m (60cm x 60cm)
                  resolution_m=0.001, # cell size [m] 2cmx2cm
                  hit_inc=0.1,       # increment per hit
-                 decay=0.98):       # to forget the obstacles over time 
+                 decay=0.98,         # to forget the obstacles over time
+                 robot_radius_m=0.085):        
         self.size_m     = size_m
         self.resolution = resolution_m
         self.hit_inc    = hit_inc
         self.decay      = decay
+        self.robot_radius_m = robot_radius_m
+
 
         self.half_size  = size_m / 2.0  #how far the gird extends from the center   
         self.n_cells    = int(size_m / resolution_m) #30 x30 matrix cells 
@@ -152,6 +155,8 @@ class LocalOccupancyGrid:
 
         # obstacles around robot in cm
         obs_cm = obstacles_pos_from_sensor_vals(sensor_vals)
+         # how many cells correspond to the robot radius
+        inflate_cells = int(self.robot_radius_m / self.resolution)
 
         for ox_cm, oy_cm in obs_cm:
             if not np.isfinite(ox_cm) or not np.isfinite(oy_cm):
@@ -167,6 +172,15 @@ class LocalOccupancyGrid:
 
             iy, ix = idx
             self.grid[iy, ix] = min(1.0, self.grid[iy, ix] + self.hit_inc)
+
+            # Inflate: mark a disk of cells around (iy, ix)
+            for dy in range(-inflate_cells, inflate_cells + 1):
+                for dx in range(-inflate_cells, inflate_cells + 1):
+                    jy = iy + dy
+                    jx = ix + dx
+                    if 0 <= jy < self.n_cells and 0 <= jx < self.n_cells:
+                        if dx*dx + dy*dy <= inflate_cells*inflate_cells:
+                            self.grid[jy, jx] = min(1.0, self.grid[jy, jx] + self.hit_inc)
 
 
 
@@ -335,6 +349,8 @@ class LocalNavigator:
     def _repulsive_vector(self):
         """
         Compute repulsive force in ROBOT frame [x_left, y_forward].
+        Only consider obstacles in front of or near the robot,
+        and within rep_influence_radius.
         """
         F_rep = np.zeros(2, dtype=float)
         R = self.cfg.rep_influence_radius
@@ -346,17 +362,23 @@ class LocalNavigator:
             x_m, y_m = self.grid._index_to_point(iy, ix)
             d = math.sqrt(x_m*x_m + y_m*y_m)
 
+            # 👇 NEW: ignore obstacles clearly behind the robot
+            if y_m <= 0.0:
+                continue
+
             if d < eps or d > R:
                 continue
 
             # Direction from obstacle -> robot
             dir_vec = np.array([-x_m / d, -y_m / d])
-            # Magnitude stronger when closer, zero at R
+
+            # Magnitude: stronger when closer, zero at R
             mag = self.cfg.k_rep * (1.0 / d - 1.0 / R)
 
             F_rep += mag * dir_vec
 
         return F_rep
+
 
     # ---------- 4.5 MAIN: compute virtual goal ----------
 
@@ -378,9 +400,15 @@ class LocalNavigator:
         # 2) Express LA in ROBOT frame
         p_LA_robot = self.world_to_robot(pose, p_LA_world)
 
-        # 3) If straight path to LA is free, use LA directly
-        if self._corridor_free_to_LA(p_LA_robot):
+        # --- NEW: compute repulsive vector FIRST ---
+        F_rep = self._repulsive_vector()
+        rep_mag = np.linalg.norm(F_rep)
+
+        # If corridor is free AND there is essentially no repulsion,
+        # just go directly to the look-ahead point.
+        if self._corridor_free_to_LA(p_LA_robot) and rep_mag < 1e-3:
             return p_LA_world.copy()
+        # -------------------------------
 
         # 4) Else: compute potential-field direction
 
@@ -389,10 +417,10 @@ class LocalNavigator:
         norm_att = np.linalg.norm(F_att)
         if norm_att > 1e-6:
             F_att = (self.cfg.k_att / norm_att) * F_att
+        # inside compute_virtual_goal, after F_att, F_rep:
+        print(f"[DEBUG] F_att={F_att}, F_rep={F_rep}")
 
-        # Repulsive from obstacles
-        F_rep = self._repulsive_vector()
-
+        # (we already have F_rep)
         F_tot = F_att + F_rep
         norm_tot = np.linalg.norm(F_tot)
         if norm_tot < 1e-6:

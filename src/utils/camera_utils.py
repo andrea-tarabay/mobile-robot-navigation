@@ -49,15 +49,15 @@ def find_available_camera(max_test=5):
     # ------------------------------
     elif system == "Windows":
         # Try USB webcam first
-        cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         if cap.isOpened():
             ret, _ = cap.read()
             if ret:
-                return 1, cap
+                return 0, cap
         cap.release()
 
         # Try internal laptop webcam
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
         if cap.isOpened():
             ret, _ = cap.read()
             if ret:
