@@ -253,3 +253,8 @@ $RECYCLE.BIN/
 .vscode/
 .history/
 *.code-workspace
+
+# =========================
+#  Vision Parameters
+# =========================
+**/vision_params.json
