@@ -2,6 +2,9 @@ import threading
 import queue
 import numpy as np
 import time
+import asyncio
+
+from tdmclient import ClientAsync, aw
 
 from pose_estimation.extended_kalman_filter import ExtendedKalmanFilter
 from global_navigation.global_nav2 import GlobalNavigator
@@ -56,8 +59,8 @@ class Fsm(threading.Thread):
 
         # external interfaces
         self.data_queue = data_queue
-        #self.node = thymio_node
-        #self.client = client
+        self.node = None
+        self.client = None
 
         # internal state
         self.dt = dt
@@ -76,6 +79,14 @@ class Fsm(threading.Thread):
     # Thread external interface (start/pause/stop)
     # ------------------------------------------------------------
     def start(self):
+        try:
+            self.client = ClientAsync()
+            self.node = aw(self.client.wait_for_node())
+            aw(self.node.lock())
+        except Exception as e:
+            print(f"[FSM] Could not connect to Thymio: {e}")
+            return
+
         self.__resume.set()
         self.__running.set()
         if not self.is_alive():
@@ -88,6 +99,10 @@ class Fsm(threading.Thread):
         self.__resume.set()
 
     def stop(self):
+        self.stop_motors()
+        aw(self.node.unlock())
+        self.client.close()
+
         self.__resume.set()
         self.__running.clear()
 
@@ -208,15 +223,15 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             """uL, uR, ctrl_info = self.g2g.compute_motor_commands(
                 pose, virt_goal
-            )
+            )"""
 
             # --------------------------------------------------------
             # 8) Apply to robot
             # --------------------------------------------------------
-            self.node.set_variables({
-                "motor.left.target":  [uL],
-                "motor.right.target": [uR],
-            })"""
+            asyncio.run(self.node.set_variables({
+                "motor.left.target":  [50],
+                "motor.right.target": [50],
+            }))
 
             # --------------------------------------------------------
             # 9) Upstream interface callback
@@ -246,10 +261,10 @@ class Fsm(threading.Thread):
     # ------------------------------------------------------------
 
     def stop_motors(self):
-        """try:
-            self.node.set_variables({
+        try:
+            asyncio.run(self.node.set_variables({
                 "motor.left.target":  [0],
                 "motor.right.target": [0],
-            })
+            }))
         except:
-            pass"""
+            pass
