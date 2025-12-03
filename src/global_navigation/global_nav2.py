@@ -4,6 +4,7 @@ from shapely.geometry import Polygon, Point, LineString, box
 from shapely.ops import unary_union
 import pyvisgraph as vg
 
+
 class GlobalNavigator:
     """
     Static class for global path planning from obstacles, start, and goal.
@@ -55,9 +56,33 @@ class GlobalNavigator:
             for geom in merged.geoms:
                 merged_list.append(list(geom.exterior.coords)[:-1])
         return merged_list
+    
+    @staticmethod    
+    def clip_obstacles_to_image(inflated_obstacles, border):
+
+        clipped = []
+
+        for poly in inflated_obstacles:
+            P = Polygon(poly)
+
+            inter = P.intersection(border)
+
+            if inter.is_empty:
+                continue
+
+            if inter.geom_type == "Polygon":
+                coords = list(inter.exterior.coords)[:-1]
+                clipped.append(coords)
+
+            elif inter.geom_type == "MultiPolygon":
+                for g in inter.geoms:
+                    coords = list(g.exterior.coords)[:-1]
+                    clipped.append(coords)
+
+        return clipped
 
     @staticmethod
-    def not_overlapping_obstacle(obstacles, coord, margin=None):
+    def outside_obstacle(obstacles, coord, margin=None):
         """
         Check if a robot at coord is outside all obstacles.
         If robot_radius_px is given, approximate the robot with a square (AABB).
@@ -76,14 +101,50 @@ class GlobalNavigator:
                 return False
         return True
 
+    
     @staticmethod
-    def compute_visibility_path(merged_inflated, start, goal):
-        polygons = [[vg.Point(float(x), float(y)) for (x, y) in poly] for poly in merged_inflated]
+    def compute_visibility_path(merged_inflated, start, goal,border):
+
+        # Convertir les obstacles en polygones pyvisgraph
+        polygons = []
+        for poly in merged_inflated:
+            pts = [vg.Point(float(x), float(y)) for (x, y) in poly]
+            polygons.append(pts)
+
+        # Construire le graphe de visibilité
         g = vg.VisGraph()
-        g.build(polygons)
-        s, t = vg.Point(*start), vg.Point(*goal)
-        path_pts = g.shortest_path(s, t)
-        return [(p.x, p.y) for p in path_pts], g
+        g.build(polygons) 
+
+        VG = g.visgraph
+        edges_to_remove = set()
+
+        for edge in list(VG.get_edges()):
+            seg = LineString([(edge.p1.x, edge.p1.y),
+                            (edge.p2.x, edge.p2.y)])
+
+            # On veut que le segment soit entièrement DANS la zone navigable
+            # (on tolère un léger flottement numérique avec buffer(-eps))
+            if not seg.within(border):
+                edges_to_remove.add(edge)
+
+        for e in edges_to_remove:
+            VG.graph[e.p1].discard(e)
+            VG.graph[e.p2].discard(e)
+            VG.edges.discard(e)
+
+        # Points de départ / arrivée
+        s = vg.Point(float(start[0]), float(start[1]))
+        t = vg.Point(float(goal[0]),  float(goal[1]))
+
+        try:
+            path_pts = g.shortest_path(s, t)
+        except KeyError as e:
+            print(f"[GLOBAL] No possible path (KeyError in shortest_path) : {e}")
+            return None, g
+
+        # Repasser en tuples (x, y)
+        path = [(p.x, p.y) for p in path_pts]
+        return path,g
 
     @staticmethod
     def path_is_collision_free(path, obstacles):
@@ -112,23 +173,33 @@ class GlobalNavigator:
             path: list of (x, y) tuples, or None if no valid path
         """
 
+        border = box(
+            robot_radius_px,
+            robot_radius_px,
+            img_width - robot_radius_px,
+            img_height - robot_radius_px
+        )
+
         # 1) Inflate obstacles
         inflated = GlobalNavigator.inflate_obstacles(obstacles, robot_radius_px)
 
         # 3) Merge overlapping inflated obstacles
         merged_inflated = GlobalNavigator.merge_inflated_obstacles(inflated)
 
+        merged_inflated_clip = GlobalNavigator.clip_obstacles_to_image(merged_inflated, border)
+
+
         # 4) Validate start and goal positions
-        if not GlobalNavigator.not_overlapping_obstacle(merged_inflated, start, margin=robot_radius_px/2):
+        if not GlobalNavigator.outside_obstacle(merged_inflated, start, robot_radius_px/2):
             print("[GLOBAL] Start position invalid:", start)
             return None
-        if not GlobalNavigator.not_overlapping_obstacle(merged_inflated, goal, margin=robot_radius_px/2):
+        if not GlobalNavigator.outside_obstacle(merged_inflated, goal, robot_radius_px/2):
             print("[GLOBAL] Goal position invalid:", goal)
             return None
 
         # 5) Compute shortest path using visibility graph
-        path, g = GlobalNavigator.compute_visibility_path(merged_inflated, start, goal)
-        if not GlobalNavigator.path_is_collision_free(path, obstacles):
+        path, g = GlobalNavigator.compute_visibility_path(merged_inflated_clip, start, goal,border)
+        if not GlobalNavigator.path_is_collision_free(path, obstacles) and path != None:
             print("[GLOBAL] No collision-free path found.")
             return None
 
@@ -137,7 +208,7 @@ class GlobalNavigator:
             debug_copy = debug_img.copy()
             for poly in obstacles:
                 cv2.polylines(debug_copy, [np.array(poly, np.int32)], True, (0, 255, 0), 2)
-            for poly in merged_inflated:
+            for poly in merged_inflated_clip:
                 cv2.polylines(debug_copy, [np.array(poly, np.int32)], True, (0, 0, 255), 2)
             for edge in g.visgraph.get_edges():
                 cv2.line(debug_copy, (int(edge.p1.x), int(edge.p1.y)),
