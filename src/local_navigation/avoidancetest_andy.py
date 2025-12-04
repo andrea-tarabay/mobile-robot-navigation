@@ -185,7 +185,7 @@ class LocalOccupancyGrid:
 
 @dataclass
 class LocalNavConfig:
-    lookahead_dist_m: float = 0.15
+    lookahead_dist_m: float = 0.07
     max_lookahead_points: int = 30
     occ_threshold: float = 0.3
     rep_influence_radius: float = 0.05
