@@ -185,7 +185,7 @@ class LocalOccupancyGrid:
 
 @dataclass
 class LocalNavConfig:
-    lookahead_dist_m: float = 0.07
+    lookahead_dist_m: float = 0.06
     max_lookahead_points: int = 30
     occ_threshold: float = 0.3
     rep_influence_radius: float = 0.05
@@ -456,8 +456,9 @@ class GoToGoalGains:
     Kv: float = 2.0
     Komega: float = 3.0      # smaller than 4.0 now that we have D
     Ki_omega: float = 0.0    # you can try 0.1 later
-    Kd_omega: float = 0.4
+    Kd_omega: float = 0.6
     int_alpha_max: float = 0.5
+    Ki_v: float = 0
     v_max: float = 0.25
     w_max: float = 1.5
    
@@ -478,6 +479,7 @@ class GoToGoalController:
          # PID state for angle
         self.prev_alpha = 0.0
         self.int_alpha = 0.0
+        self.int_rho = 0.0
         self.prev_time = None
 
     # def compute_unicycle_cmd(self, pose, goal_xy):
@@ -517,6 +519,7 @@ class GoToGoalController:
         dy = yg - y
 
         rho = math.hypot(dx, dy)
+        print("x:", x,"xg:",xg, "y:", y,"yg:", yg, "dx", dx, "dy", dy, "rho", rho)
 
         # angle of the goal in robot frame
         y_forward = math.cos(theta) * dx + math.sin(theta) * dy
@@ -562,6 +565,11 @@ class GoToGoalController:
         alpha_dot = (alpha - self.prev_alpha) / dt
         self.prev_alpha = alpha
 
+        # 2) Integral term (with anti-windup)
+        self.int_rho += rho * dt
+
+
+
         # 4) PID output for angular velocity
         Kp = self.g.Komega
         Ki = self.g.Ki_omega
@@ -569,8 +577,10 @@ class GoToGoalController:
 
         w = Kp * alpha + Ki * self.int_alpha + Kd * alpha_dot
 
+        Kiv = self.g.Ki_v
+
         # 5) Linear velocity (still simple P on rho)
-        v = self.g.Kv * rho
+        v = self.g.Kv * rho + Kiv * self.int_rho
 
         print(f"PID terms: P={Kp*alpha:.3f}, I={Ki*self.int_alpha:.3f}, "
               f"D={Kd*alpha_dot:.3f}, w_raw={w:.3f}")
@@ -646,7 +656,7 @@ grid = LocalOccupancyGrid(
 )
 
 cfg = LocalNavConfig(
-    lookahead_dist_m=0.15,
+    lookahead_dist_m=0.06,
     max_lookahead_points=30,
     occ_threshold=0.3,
     rep_influence_radius=0.8,#0.05 was before
@@ -668,9 +678,10 @@ gains = GoToGoalGains(
     Kv=3.0,
     Komega=3.0,       # smaller than 4.0 now that we have D
     Ki_omega=0.1,     # you can try 0.1 later
-    Kd_omega=2,
-    int_alpha_max=0.5,
-    v_max=0.25,
+    Kd_omega=0.7,
+    int_alpha_max=0.6,
+    Ki_v = 0,
+    v_max=0.4,
     w_max=2,
 )
 kin = ThymioKinematics()
