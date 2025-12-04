@@ -75,7 +75,7 @@ class ComputerVisionCore:
     Stateless CV core: processes a frame given parameters.
     """
     # ---- Constants ----
-    MM_PER_PIXEL = 0.876
+    MM_PER_PIXEL = 0.86
 
     MARKER_RADIUS_MM = 20
     ROBOT_RADIUS_MM = 72
@@ -264,7 +264,6 @@ class ComputerVisionCore:
                 if goal_bbox is not None and poly.intersects(goal_bbox):
                     continue
                 obstacles.append(poly)
-
         return obstacles
     
     @staticmethod
@@ -279,7 +278,7 @@ class ComputerVisionCore:
         return low, high
     
     @staticmethod
-    def px_to_mm(distance_px, mm_per_pixel: Optional[float] = None):
+    def px_to_mm(distance_px: int, mm_per_pixel: Optional[float] = None):
         """
         Convert distance in pixels to millimeters using known millimeter-per-pixel ratio.
         """
@@ -288,13 +287,13 @@ class ComputerVisionCore:
         return np.asarray(distance_px, dtype=float) * mm_per_pixel
     
     @staticmethod
-    def mm_to_px(distance_mm, mm_per_pixel: Optional[float] = None):
+    def mm_to_px(distance_mm: float, mm_per_pixel: Optional[float] = None):
         """
         Convert distance in millimeters to pixels using known millimeter-per-pixel ratio.
         """
         if mm_per_pixel is None:
             mm_per_pixel = ComputerVisionCore.MM_PER_PIXEL
-        return np.asarray(distance_mm, dtype=float) / mm_per_pixel
+        return np.round(np.asarray(distance_mm, dtype=float) / mm_per_pixel).astype(int)
     
     @staticmethod
     def compute_mm_per_pixel(point_px_1, point_px_2, real_dist_mm):

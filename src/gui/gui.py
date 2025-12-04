@@ -15,6 +15,7 @@ from computer_vision.camera_capture_thread import CameraCaptureThread
 from computer_vision.vision_params_manager import VisionParamsManager
 from gui.init_vision_wizard import InitVisionWizard
 from utils.camera_utils import find_available_camera
+from computer_vision.computer_vision import ComputerVisionCore
 
 # --------------------------
 # Constants
@@ -97,16 +98,13 @@ class Gui(tk.Tk):
         self._set_buttons_wait_for_init()
 
         # Widgets for FSM data (NEW)
-        self.lbl_pose = ttk.Label(self, text="Pose: ---")
+        self.lbl_pose = ttk.Label(self, text="Pose [mm]: ---")
         self.lbl_pose.pack()
 
         self.lbl_kidnapped = ttk.Label(self, text="Kidnapped: ---")
         self.lbl_kidnapped.pack()
 
-        self.lbl_obs = ttk.Label(self, text="Obstacles: ---")
-        self.lbl_obs.pack()
-
-        self.lbl_goal = ttk.Label(self, text="Goal: ---")
+        self.lbl_goal = ttk.Label(self, text="Goal [mm]: ---")
         self.lbl_goal.pack()
 
         # ------------------------
@@ -115,25 +113,6 @@ class Gui(tk.Tk):
         cv_frame.pack(side="top", fill="x", expand=False, padx=8, pady=(0, 8))
         self.cv_image_label = tk.Label(cv_frame)
         self.cv_image_label.pack()
-
-        # ------------------------
-        # Matplotlib area
-        plot_frame = ttk.Frame(self)
-        plot_frame.pack(side="top", fill="both", expand=True, padx=8, pady=(0, 8))
-
-        # Figure & Axes
-        self.fig = Figure(figsize=(6, 4), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        self._setup_plot_axes()
-
-        # embed matplotlib canvas
-        self.mpl_canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
-        self.mpl_widget = self.mpl_canvas.get_tk_widget()
-        self.mpl_widget.pack(side="top", fill="both", expand=True)
-
-        toolbar = NavigationToolbar2Tk(self.mpl_canvas, plot_frame)
-        toolbar.update()
-        toolbar.pack(side="top", fill="x")
 
     # ==========================================================================
     # BUTTON STATE HELPERS
@@ -321,15 +300,18 @@ class Gui(tk.Tk):
                     for i in range(len(pts) - 1):
                         cv2.line(frame, pts[i], pts[i+1], (0, 0, 255), 2)
 
-                # Draw robot
-                pose = fsm_packet.get("pose", None)
-                if pose is not None:
-                    cv2.circle(frame, (int(pose[0]), int(pose[1])), 5, (0, 255, 0), -1)
+                # Draw Extended Kalman Filter mean, orientation and covariance
+                self._draw_EKF(
+                    frame,
+                    fsm_packet.get("pose"),
+                    fsm_packet.get("pose_cov")
+                )
 
                 # Draw goal
                 goal = fsm_packet.get("goal", None)
                 if goal is not None:
-                    cv2.circle(frame, (int(goal[0]), int(goal[1])), 6, (255, 255, 0), -1)
+                    goal_px = ComputerVisionCore.mm_to_px(goal)
+                    cv2.circle(frame, (int(goal_px[0]), int(goal_px[1])), 6, (255, 255, 0), -1)
 
             # Convert to Tk image
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -354,7 +336,7 @@ class Gui(tk.Tk):
         try:
             while True:
                 packet = self.fsm_queue.get_nowait()
-                self._handle_fsm_packet(packet)
+                self._handle_label_updates(packet)
         except queue.Empty:
             pass
 
@@ -364,87 +346,78 @@ class Gui(tk.Tk):
     # ==========================================================================
     # Handle FSM UI packets (NEW)
     # ==========================================================================
-    def _handle_fsm_packet(self, packet):
+    def _handle_label_updates(self, packet):
         self._last_fsm_packet = packet  # store latest FSM info
 
         # Update UI labels
         if "pose" in packet:
-            self.lbl_pose.config(text=f"Pose: {packet['pose']}")
-        if "pose_cov" in packet:
-            self._draw_ekf(packet["pose"], packet["pose_cov"])
+            self.lbl_pose.config(text=f"Pose: {packet['pose'].round(1)} mm")
         if "kidnapped" in packet:
             self.lbl_kidnapped.config(text=f"Kidnapped: {packet['kidnapped']}")
-        if "obstacle_count" in packet:
-            self.lbl_obs.config(text=f"Obstacles: {packet['obstacle_count']}")
         if "goal" in packet:
-            self.lbl_goal.config(text=f"Goal: {packet['goal']}")
+            self.lbl_goal.config(text=f"Goal: {packet['goal'].round(1)} mm")
 
-
-    def _setup_plot_axes(self):
-        self.ax.clear()
-        self.ax.set_title("EKF Mean & Covariance")
-        self.ax.set_xlabel("x (pixels)")
-        self.ax.set_ylabel("y (pixels, downward)")
-
-        # default limits (customize)
-        self.ax.set_xlim(0, IMG_WIDTH)
-        self.ax.set_ylim(IMG_HEIGHT, 0)  # y inverted => top-left origin
-
-        self.ax.grid(True)
-
-    def _draw_ekf(self, mean_state, cov):
+    # ==========================================================================
+    # Plot Extended Kalman Filter state on camera frame
+    # ==========================================================================
+    def _draw_EKF(self, frame, mean, cov, color=(128,0,128), n_std=2):
         """
-        Draw the EKF mean (red dot), covariance ellipse, and orientation arrow.
-        This must be called from the main thread.
+        Draws an ellipse representing covariance on an OpenCV frame.
+
+        mean: (x, y, theta) in mm
+        cov: 3x3 covariance matrix (mm)
+        color: BGR
+        n_std: number of std deviations (2 = 95% confidence)
         """
-        self.ax.clear()
-        self._setup_plot_axes()
 
-        if mean_state is None:
-            self.mpl_canvas.draw_idle()
-            return
+        # Extract xy covariance and convert to pixels
+        cov_xy = cov[:2, :2]
+        cov_xy = ComputerVisionCore.mm_to_px(ComputerVisionCore.mm_to_px(cov_xy))
 
-        x, y, theta = mean_state
+        # Eigen decomposition
+        eigvals, eigvecs = np.linalg.eigh(cov_xy)
 
-        # Plot mean
-        self.ax.plot(x, y, "ro", markersize=6, label="EKF mean")
+        # Sort eigenvalues descending
+        order = eigvals.argsort()[::-1]
+        eigvals, eigvecs = eigvals[order], eigvecs[:, order]
 
-        # Orientation arrow
-        arrow_length = 100.0
-        dx = arrow_length * np.cos(theta)
-        dy = arrow_length * np.sin(theta)
-        self.ax.arrow(x, y, dx, dy,
-                      head_width=30.0, head_length=40.0,
-                      fc="green", ec="green", linewidth=2, length_includes_head=True, label="theta")
+        # Compute ellipse angle
+        angle = np.degrees(np.arctan2(eigvecs[1,0], eigvecs[0,0]))
 
-        # Covariance ellipse (2x2 from top-left corner of P)
-        cov_xy = cov[0:2, 0:2] if cov is not None else np.eye(2) * 1e-3
+        # Compute ellipse axes (scaled by n_std)
+        axis1 = np.round(n_std * np.sqrt(eigvals[0])).astype(int)
+        axis2 = np.round(n_std * np.sqrt(eigvals[1])).astype(int)
 
-        try:
-            eig_vals, eig_vecs = np.linalg.eigh(cov_xy)
-        except np.linalg.LinAlgError:
-            eig_vals = np.array([1e-6, 1e-6])
-            eig_vecs = np.eye(2)
+        # Compute center in pixels
+        center_px = (
+            ComputerVisionCore.mm_to_px(mean[0]),
+            ComputerVisionCore.mm_to_px(mean[1]),
+        )
 
-        eig_vals = np.maximum(eig_vals, 1e-8)
+        # Draw ellipse
+        cv2.ellipse(
+            frame,
+            center_px,
+            (axis1, axis2),
+            angle,
+            0, 360,
+            color,
+            2
+        )
 
-        # choose order: largest first
-        order = np.argsort(eig_vals)[::-1]
-        eig_vals = eig_vals[order]
-        eig_vecs = eig_vecs[:, order]
-
-        n_sigma = 3.0
-        width = 2 * n_sigma * np.sqrt(eig_vals[0])
-        height = 2 * n_sigma * np.sqrt(eig_vals[1])
-
-        angle = np.degrees(np.arctan2(eig_vecs[1, 0], eig_vecs[0, 0]))
-
-        ellipse = Ellipse((x, y), width=width, height=height, angle=angle,
-                          edgecolor="blue", facecolor="none", linewidth=2, alpha=0.7, label="cov")
-        self.ax.add_patch(ellipse)
-
-        self.ax.legend(loc="upper left")
-        self.mpl_canvas.draw_idle()
+        # Draw orientation arrow
+        arrow_length = 50  # pixels
+        theta = mean[2]
+        dx = int(arrow_length * np.cos(theta))
+        dy = int(arrow_length * np.sin(theta))
+        cv2.arrowedLine(
+            frame,
+            center_px,
+            (center_px[0] + dx, center_px[1] + dy),
+            color,
+            2,
+            tipLength=0.7
+        )
 
     # -------------------------
     # FSM <-> GUI safe callback wrapper

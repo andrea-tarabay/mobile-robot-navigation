@@ -117,7 +117,7 @@ class CameraCaptureThread(threading.Thread):
         if robot and robot["found"]:
             center = robot["center"]
             theta = robot["theta"]
-            arrow_length = 60
+            arrow_length = 80
             dx = int(arrow_length * np.cos(theta))
             dy = int(arrow_length * np.sin(theta))
             cv2.circle(overlay_frame, center, 5, (0, 0, 255), -1)

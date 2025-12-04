@@ -302,11 +302,11 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             if self.ui_callback:
                 self.ui_callback({
-                    "pose": ComputerVisionCore.mm_to_px(pose_mm),
+                    "pose": pose_mm,
                     "pose_cov": P,
                     "kidnapped": self.kidnapped,
-                    "path": self.current_path,
-                    "goal": goal_det["center"] if goal_det["found"] else None,
+                    "path": self.current_path if self.current_path is not None else [],
+                    "goal": goal_pose_mm if goal_det["found"] else None,
                     "obstacle_count": len(obstacles),
                     "vision_found": robot_det["found"],
                     "timestamp": time.time(),
