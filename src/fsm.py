@@ -125,6 +125,8 @@ class Fsm(threading.Thread):
         aw(self.node.wait_for_variables({"prox.horizontal", "motor.left.speed", "motor.right.speed"}))
 
         while self.__running.is_set():
+            if not self.__resume.is_set():
+                self.set_motors(left_target=0, right_target=0)
             self.__resume.wait()  # blocks when paused
 
             # --------------------------------------------------------
@@ -242,10 +244,7 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             # 8) Apply to robot
             # --------------------------------------------------------
-            aw(self.node.set_variables({
-                "motor.left.target":  [50],
-                "motor.right.target": [50],
-            }))
+            self.set_motors(left_target=50, right_target=50)
 
             # --------------------------------------------------------
             # 9) Upstream interface callback
@@ -268,7 +267,7 @@ class Fsm(threading.Thread):
         # ------------------------------------------------------------
         # Cleanup on exit
         # ------------------------------------------------------------
-        self.stop_motors()
+        self.set_motors(left_target=0, right_target=0)
         aw(self.node.unlock())
         print("[FSM] Thread stopped.")
 
@@ -276,11 +275,11 @@ class Fsm(threading.Thread):
     # Utilities
     # ------------------------------------------------------------
 
-    def stop_motors(self):
+    def set_motors(self, left_target=0, right_target=0):
         try:
             aw(self.node.set_variables({
-                "motor.left.target":  [0],
-                "motor.right.target": [0],
+                "motor.left.target":  [left_target],
+                "motor.right.target": [right_target],
             }))
         except:
             pass
