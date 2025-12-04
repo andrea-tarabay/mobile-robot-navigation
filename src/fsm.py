@@ -18,6 +18,7 @@ from local_navigation.avoidancetest_andy import *
 DISTANCE_TO_GOAL_TOL_MM = 100  # in mm
 DISTANCE_TO_GOAL_TOL_M = DISTANCE_TO_GOAL_TOL_MM / 1000.0  # in meters
 DENSIFY_STEP_DIST_M = 0.02  # in meters
+OFF_TRACK_THRESHOLD_MM = 150  # in mm
 
 # ------------------------------------------------------------
 # Helper for path deviation measurement
@@ -150,7 +151,21 @@ class Fsm(threading.Thread):
             det = packet["detections"]
 
             robot_det = det["robot"]
+            if robot_det["found"]:
+                # Convert pixel → mm only if robot is visible
+                robot_pose_mm = np.array([
+                                    ComputerVisionCore.px_to_mm(robot_det["center"][0]), 
+                                    ComputerVisionCore.px_to_mm(robot_det["center"][1]), 
+                                    robot_det["theta"]
+                                ])
+            
             goal_det = det["goal"]
+            if goal_det["found"]:
+                goal_pose_mm = np.array([
+                                    ComputerVisionCore.px_to_mm(goal_det["center"][0]), 
+                                    ComputerVisionCore.px_to_mm(goal_det["center"][1])
+                                ])
+                
             obstacles = det["obstacles"]
 
             # --------------------------------------------------------
@@ -169,14 +184,14 @@ class Fsm(threading.Thread):
 
             if robot_det["found"]:
                 self.last_vision_time = time.time()
-                z = np.array([robot_det["center"][0],
-                              robot_det["center"][1],
-                              robot_det["theta"]])
-                pose, P = self.ekf.update(z)
-                self.last_visible_pose = pose
+                z = np.array([robot_pose_mm[0],
+                              robot_pose_mm[1],
+                              robot_pose_mm[2]])
+                pose_mm, P = self.ekf.update(z)
+                self.last_visible_pose = pose_mm
             else:
                 # No new measurement
-                pose, P = pose_pred, P_pred
+                pose_mm, P = pose_pred, P_pred
 
             # --------------------------------------------------------
             # 4) Kidnapped robot detection
@@ -202,8 +217,11 @@ class Fsm(threading.Thread):
 
             elif not self.kidnapped:
                 # If robot deviates far from path after reappearing
-                d = distance_to_path(pose, self.current_path)
-                if d > 40:  # pixels threshold
+                d = distance_to_path(
+                        pose_mm, 
+                        ComputerVisionCore.px_to_mm(self.current_path)
+                    )
+                if d > OFF_TRACK_THRESHOLD_MM:  # mm threshold
                     print("[FSM] Robot off-path, replanning.")
                     need_replan = True
 
@@ -212,8 +230,8 @@ class Fsm(threading.Thread):
                     print("[FSM] Computing global path...")
                     result = GlobalNavigator.plan_path(
                         obstacles=obstacles,
-                        start=pose[:2],
-                        goal=goal_det["center"],
+                        start=ComputerVisionCore.mm_to_px(pose_mm[:2]),
+                        goal=ComputerVisionCore.mm_to_px(goal_pose_mm),
                         robot_radius_px=ComputerVisionCore.mm_to_px(ComputerVisionCore.ROBOT_RADIUS_MM),
                         img_width=frame.shape[1],
                         img_height=frame.shape[0],
@@ -230,11 +248,13 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             # 6) Check for goal reached
             # --------------------------------------------------------
-            robot_pose_in_meters = np.array(robot_det["center"][0] / 1000.0, 
-                                             robot_det["center"][1] / 1000.0, 
-                                             robot_det["theta"]),  # in meters
-            goal_pose_in_meters = ComputerVisionCore.px_to_mm(np.array(goal_det["center"])) / 1000.0
-            dist_to_goal = np.linalg.norm(robot_pose_in_meters[:1] - goal_pose_in_meters)
+            robot_pose_m = np.array([
+                                pose_mm[0] / 1000.0, 
+                                pose_mm[1] / 1000.0, 
+                                pose_mm[2]
+                            ])  # in meters
+            goal_pose_m = np.array(goal_pose_mm / 1000.0)  # in meters
+            dist_to_goal = np.linalg.norm(robot_pose_m[:1] - goal_pose_m)
 
             if dist_to_goal < DISTANCE_TO_GOAL_TOL_M:
                 print("Goal reached within tolerance – stopping.")
@@ -258,8 +278,11 @@ class Fsm(threading.Thread):
                 #   - local occupancy grid (through 'navigator.grid')
                 #   - sensor_vals to decide how much repulsion to apply
                 virt_goal_wf, _, _, _ = navigator.compute_virtual_goal(
-                    robot_pose_in_meters,
-                    densify_path(self.current_path, step=DENSIFY_STEP_DIST_M),
+                    robot_pose_m,
+                    densify_path(
+                        ComputerVisionCore.px_to_mm(self.current_path) / 1000.0,
+                        step=DENSIFY_STEP_DIST_M
+                    ),
                     sensor_vals=sensor_vals
                 )
 
@@ -273,7 +296,7 @@ class Fsm(threading.Thread):
                 # Go-to-goal PID + side/center heuristics based on sensor_vals
                 # dt is your control timestep (e.g. 0.1 s)
                 uL, uR, _ = g2g.compute_motor_commands(
-                    robot_pose_in_meters,
+                    robot_pose_m,
                     virt_goal_wf,
                     sensor_vals=sensor_vals,
                     dt=self.dt
@@ -294,7 +317,7 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             if self.ui_callback:
                 self.ui_callback({
-                    "pose": pose,
+                    "pose": pose_mm,
                     "pose_cov": P,
                     "kidnapped": self.kidnapped,
                     "path": self.current_path,

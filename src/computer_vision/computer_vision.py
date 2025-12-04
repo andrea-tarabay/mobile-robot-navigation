@@ -285,7 +285,7 @@ class ComputerVisionCore:
         """
         if mm_per_pixel is None:
             mm_per_pixel = ComputerVisionCore.MM_PER_PIXEL
-        return distance_px * mm_per_pixel
+        return np.asarray(distance_px, dtype=float) * mm_per_pixel
     
     @staticmethod
     def mm_to_px(distance_mm, mm_per_pixel: Optional[float] = None):
@@ -294,7 +294,7 @@ class ComputerVisionCore:
         """
         if mm_per_pixel is None:
             mm_per_pixel = ComputerVisionCore.MM_PER_PIXEL
-        return distance_mm / mm_per_pixel
+        return np.asarray(distance_mm, dtype=float) / mm_per_pixel
     
     @staticmethod
     def compute_mm_per_pixel(point_px_1, point_px_2, real_dist_mm):
