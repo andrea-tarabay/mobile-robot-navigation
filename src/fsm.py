@@ -91,15 +91,6 @@ class Fsm(threading.Thread):
     # Thread external interface (start/pause/stop)
     # ------------------------------------------------------------
     def start(self):
-        try:
-            self.client = ClientAsync()
-            self.node = aw(self.client.wait_for_node())
-            aw(self.node.lock())
-            aw(self.node.wait_for_variables({"prox.horizontal", "motor.left.speed", "motor.right.speed"}))
-        except Exception as e:
-            print(f"[FSM] Could not connect to Thymio: {e}")
-            return
-
         self.__resume.set()
         self.__running.set()
         if not self.is_alive():
@@ -112,18 +103,26 @@ class Fsm(threading.Thread):
         self.__resume.set()
 
     def stop(self):
-        self.stop_motors()
-        aw(self.node.unlock())
-        self.client.close()
-
-        self.__resume.set()
+        # stop loop
         self.__running.clear()
+        self.__resume.set()
+
+    def run(self):
+        # new asyncio loop in this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self.async_run())
 
     # ------------------------------------------------------------
     # MAIN LOOP
     # ------------------------------------------------------------
-    def run(self):
+    async def async_run(self):
         print("[FSM] Thread started.")
+
+        self.client = ClientAsync()
+        self.node = aw(self.client.wait_for_node())
+        aw(self.node.lock())
+        aw(self.node.wait_for_variables({"prox.horizontal", "motor.left.speed", "motor.right.speed"}))
 
         while self.__running.is_set():
             self.__resume.wait()  # blocks when paused
@@ -238,7 +237,7 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             # 8) Apply to robot
             # --------------------------------------------------------
-            asyncio.run(self.node.set_variables({
+            aw(self.node.set_variables({
                 "motor.left.target":  [50],
                 "motor.right.target": [50],
             }))
@@ -249,6 +248,7 @@ class Fsm(threading.Thread):
             if self.ui_callback:
                 self.ui_callback({
                     "pose": pose.tolist(),
+                    "pose_cov": P.tolist(),
                     "kidnapped": self.kidnapped,
                     "path": self.current_path,
                     "goal": goal_det["center"] if goal_det["found"] else None,
@@ -263,7 +263,8 @@ class Fsm(threading.Thread):
         # ------------------------------------------------------------
         # Cleanup on exit
         # ------------------------------------------------------------
-        #self.stop_motors()
+        self.stop_motors()
+        aw(self.node.unlock())
         print("[FSM] Thread stopped.")
 
     # ------------------------------------------------------------
@@ -272,7 +273,7 @@ class Fsm(threading.Thread):
 
     def stop_motors(self):
         try:
-            asyncio.run(self.node.set_variables({
+            aw(self.node.set_variables({
                 "motor.left.target":  [0],
                 "motor.right.target": [0],
             }))

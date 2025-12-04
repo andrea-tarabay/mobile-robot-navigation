@@ -16,6 +16,12 @@ from computer_vision.vision_params_manager import VisionParamsManager
 from gui.init_vision_wizard import InitVisionWizard
 from utils.camera_utils import find_available_camera
 
+# --------------------------
+# Constants
+# --------------------------
+IMG_WIDTH = 1920
+IMG_HEIGHT = 1080
+
 
 class Gui(tk.Tk):
     """
@@ -239,16 +245,20 @@ class Gui(tk.Tk):
 
     def on_stop(self):
         """Stop camera capture and FSM worker (if running)."""
-        # stop FSM
-        if self.thread_fsm is not None:
-            self.thread_fsm.stop()
-            self.thread_fsm = None
+        # Stop FSM thread
+        print("[GUI] Signaling threads to stop...")
+        try:
+            if self.thread_fsm and self.thread_fsm.is_alive():
+                self.thread_fsm.stop()     # just sets flags, does NOT block
+        except Exception as e:
+            print("[GUI] Error stopping FSM:", e)
 
-        # stop camera
-        if self.camera_thread is not None:
-            self.camera_thread.stop()
-            self.camera_thread.join(timeout=1.0)
-            self.camera_thread = None
+        # Stop camera thread
+        try:
+            if self.camera_thread and self.camera_thread.is_alive():
+                self.camera_thread.stop()     # just sets flags, does NOT block
+        except Exception as e:
+            print("[GUI] Error stopping Camera thread:", e)
 
         self._set_buttons_stopped()
         self.status_label.config(text="Stopped")
@@ -271,8 +281,16 @@ class Gui(tk.Tk):
     def _on_close(self):
         """Make sure background threads are stopped before exit."""
         self.on_stop()
-        # small delay to let threads shut down
-        time.sleep(0.1)
+
+        # wait for camera
+        if self.camera_thread and self.camera_thread.is_alive():
+            print("[GUI] Waiting for camera thread...")
+            self.camera_thread.join(timeout=2.0)
+
+        # wait for FSM
+        if self.thread_fsm and self.thread_fsm.is_alive():
+            print("[GUI] Waiting for FSM thread...")
+            self.thread_fsm.join(timeout=2.0)
         self.destroy()
 
 
@@ -352,6 +370,8 @@ class Gui(tk.Tk):
         # Update UI labels
         if "pose" in packet:
             self.lbl_pose.config(text=f"Pose: {packet['pose']}")
+        if "pose_cov" in packet:
+            self._draw_ekf(packet["pose"], packet["pose_cov"])
         if "kidnapped" in packet:
             self.lbl_kidnapped.config(text=f"Kidnapped: {packet['kidnapped']}")
         if "obstacle_count" in packet:
@@ -367,8 +387,8 @@ class Gui(tk.Tk):
         self.ax.set_ylabel("y (pixels, downward)")
 
         # default limits (customize)
-        self.ax.set_xlim(0, 100)
-        self.ax.set_ylim(100, 0)  # y inverted => top-left origin
+        self.ax.set_xlim(0, IMG_WIDTH)
+        self.ax.set_ylim(IMG_HEIGHT, 0)  # y inverted => top-left origin
 
         self.ax.grid(True)
 
@@ -390,11 +410,11 @@ class Gui(tk.Tk):
         self.ax.plot(x, y, "ro", markersize=6, label="EKF mean")
 
         # Orientation arrow
-        arrow_length = 10.0
+        arrow_length = 100.0
         dx = arrow_length * np.cos(theta)
         dy = arrow_length * np.sin(theta)
         self.ax.arrow(x, y, dx, dy,
-                      head_width=3.0, head_length=4.0,
+                      head_width=30.0, head_length=40.0,
                       fc="green", ec="green", linewidth=2, length_includes_head=True, label="theta")
 
         # Covariance ellipse (2x2 from top-left corner of P)
