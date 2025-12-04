@@ -10,6 +10,14 @@ from pose_estimation.extended_kalman_filter import ExtendedKalmanFilter
 from pose_estimation.differential_drive_system import DifferentialDriveSystem
 from global_navigation.global_nav2 import GlobalNavigator
 from computer_vision.computer_vision import ComputerVisionCore
+from local_navigation.avoidancetest_andy import *
+
+# -----------------------------------------------------------
+# Constants
+# -----------------------------------------------------------
+DISTANCE_TO_GOAL_TOL_MM = 100  # in mm
+DISTANCE_TO_GOAL_TOL_M = DISTANCE_TO_GOAL_TOL_MM / 1000.0  # in meters
+DENSIFY_STEP_DIST_M = 0.02  # in meters
 
 # ------------------------------------------------------------
 # Helper for path deviation measurement
@@ -220,34 +228,69 @@ class Fsm(threading.Thread):
                     print("[FSM] Cannot plan: goal not visible.")
 
             # --------------------------------------------------------
-            # 6) Local avoidance → virtual goal
+            # 6) Check for goal reached
             # --------------------------------------------------------
-            """if self.current_path:
-                virt_goal = self.local_nav.compute_virtual_goal(
-                    pose, self.current_path, sensor_vals
+            robot_pose_in_meters = np.array(robot_det["center"][0] / 1000.0, 
+                                             robot_det["center"][1] / 1000.0, 
+                                             robot_det["theta"]),  # in meters
+            goal_pose_in_meters = ComputerVisionCore.px_to_mm(np.array(goal_det["center"])) / 1000.0
+            dist_to_goal = np.linalg.norm(robot_pose_in_meters[:1] - goal_pose_in_meters)
+
+            if dist_to_goal < DISTANCE_TO_GOAL_TOL_M:
+                print("Goal reached within tolerance – stopping.")
+                self.current_path = None
+                self.set_motors(left_target=0, right_target=0)
+                break
+
+            # --------------------------------------------------------
+            # 7) Local avoidance → virtual goal
+            # --------------------------------------------------------
+            # --- update local occupancy grid from sensors ---
+            # This uses Thymio's prox readings, converts them to obstacle positions
+            # in the robot frame, and inflates obstacles by robot radius
+            grid.update_from_sensor_vals(sensor_vals)
+
+            if self.current_path:
+                # --- compute virtual goal from local navigator ---
+                # Uses:
+                #   - current pose (m)
+                #   - dense_path (m) precomputed from global planner
+                #   - local occupancy grid (through 'navigator.grid')
+                #   - sensor_vals to decide how much repulsion to apply
+                virt_goal_wf, _, _, _ = navigator.compute_virtual_goal(
+                    robot_pose_in_meters,
+                    densify_path(self.current_path, step=DENSIFY_STEP_DIST_M),
+                    sensor_vals=sensor_vals
                 )
+
+                if virt_goal_wf is None:
+                    print("[FSM] No virtual goal → stopping motors.")
+                    break
+
+                # --------------------------------------------------------
+                # 8) Compute motor commands
+                # --------------------------------------------------------
+                # Go-to-goal PID + side/center heuristics based on sensor_vals
+                # dt is your control timestep (e.g. 0.1 s)
+                uL, uR, _ = g2g.compute_motor_commands(
+                    robot_pose_in_meters,
+                    virt_goal_wf,
+                    sensor_vals=sensor_vals,
+                    dt=self.dt
+                )
+
+                # --------------------------------------------------------
+                # 9) Apply to robot
+                # --------------------------------------------------------
+                self.set_motors(left_target=uL, right_target=uR)
+            
             else:
-                virt_goal = None
-
-            if virt_goal is None:
-                print("[FSM] No virtual goal → stopping motors.")
-                self.stop_motors()
-                continue"""
+                # No path → stop
+                print("[FSM] No path available → stopping motors.")
+                break
 
             # --------------------------------------------------------
-            # 7) Compute motor commands
-            # --------------------------------------------------------
-            """uL, uR, ctrl_info = self.g2g.compute_motor_commands(
-                pose, virt_goal
-            )"""
-
-            # --------------------------------------------------------
-            # 8) Apply to robot
-            # --------------------------------------------------------
-            self.set_motors(left_target=50, right_target=50)
-
-            # --------------------------------------------------------
-            # 9) Upstream interface callback
+            # 10) Upstream interface callback
             # --------------------------------------------------------
             if self.ui_callback:
                 self.ui_callback({
@@ -262,7 +305,7 @@ class Fsm(threading.Thread):
                 })
 
             # Timing
-            time.sleep(self.dt)
+            aw(self.client.sleep(self.dt))
 
         # ------------------------------------------------------------
         # Cleanup on exit

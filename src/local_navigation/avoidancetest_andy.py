@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from scipy.interpolate import interp1d
 
 # If this is inside a package, keep the leading dot. If standalone, remove the dot.
-from local_occupancy import (
+from local_navigation.local_occupancy import (
     sensor_measurements,
     sensor_distances,
     sensor_pos_from_center,
