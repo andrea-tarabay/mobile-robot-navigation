@@ -332,7 +332,7 @@ class LocalNavigator:
 
         F_tot = F_att + F_rep
 
-        # (keep your heuristics on F_tot)
+        
         if sensor_vals is not None:
             left_side  = max(sensor_vals[0], sensor_vals[1])
             right_side = max(sensor_vals[3], sensor_vals[4])
@@ -454,8 +454,8 @@ def apply_center_heuristic(sensor_vals, v, w, min_turn=1.8, center_thr=1500):
 @dataclass
 class GoToGoalGains:
     Kv: float = 2.0
-    Komega: float = 3.0      # smaller than 4.0 now that we have D
-    Ki_omega: float = 0.0    # you can try 0.1 later
+    Komega: float = 3.0      
+    Ki_omega: float = 0.0   
     Kd_omega: float = 0.6
     int_alpha_max: float = 0.5
     Ki_v: float = 0
@@ -483,35 +483,7 @@ class GoToGoalController:
         self.prev_time = None
         self.pose_history = []  # for debugging / analysis
 
-    # def compute_unicycle_cmd(self, pose, goal_xy):
-    #     x, y, theta = pose
-    #     xg, yg = goal_xy
-    #     dx = xg - x
-    #     dy = yg - y
-
-    #     rho = math.hypot(dx, dy)
-
-    #     y_forward = math.cos(theta) * dx + math.sin(theta) * dy
-    #     x_left = math.sin(theta) * dx - math.cos(theta) * dy
-    #     print("x:", x_left, "y:", y_forward)
-    #     alpha = math.atan2(x_left, y_forward)
-    #     print("alpha", alpha)
-    #     alpha = wrap_to_pi(alpha)
-    #     print("wraped alpha", alpha)
-
-    #     alpha_dead = 5.0 * math.pi / 180.0
-    #     if abs(alpha) < alpha_dead:
-    #         alpha = 0.0
-    #     print("dead_alpha", alpha)
-
-    #     v = self.g.Kv * rho
-    #     w = self.g.Komega * alpha
-    #     print("v,w before clamp:", v, "  ", w)
-    #     v = max(-self.g.v_max, min(self.g.v_max, v))
-    #     w = max(-self.g.w_max, min(self.g.w_max, w))
-    #     print("v,w after clamp:", v, "  ", w)
-
-    #     return v, w, rho, alpha
+   
 
     def compute_unicycle_cmd(self, pose, goal_xy, dt=None):
         x, y, theta = pose
@@ -546,7 +518,7 @@ class GoToGoalController:
         if dt is None:
             now = time.time()
             if self.prev_time is None:
-                dt = 0.1  # reasonable default first step
+                dt = 0.1  
             else:
                 dt = now - self.prev_time
                 # clamp dt so spikes don't explode derivative & integral
@@ -620,7 +592,6 @@ class GoToGoalController:
         v, w, rho, alpha = self.compute_unicycle_cmd(pose, goal_xy, dt=dt)
         stopped = False
 
-        #self.pose_history.append(tuple(pose))  # or pose[:2] if you only want (x, y)
 
         if stop_if_close and rho < tol:
             v = 0.0
@@ -679,8 +650,8 @@ navigator = LocalNavigator(grid, cfg)
 
 gains = GoToGoalGains(
     Kv=3.0,
-    Komega=3.0,       # smaller than 4.0 now that we have D
-    Ki_omega=0.1,     # you can try 0.1 later
+    Komega=3.0,       
+    Ki_omega=0.1,    
     Kd_omega=0.7,
     int_alpha_max=0.6,
     Ki_v = 0,

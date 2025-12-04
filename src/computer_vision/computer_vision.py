@@ -210,7 +210,7 @@ class ComputerVisionCore:
         frame_copy = frame.copy()
         robot_pose = ComputerVisionCore.detect_robot(frame_copy, params_color)
 
-         # Create robot rectangle if robot is found
+        # Create robot rectangle if robot is found
         robot_bbox = None
         if robot_pose["found"]:
             # Get robot center
@@ -221,7 +221,7 @@ class ComputerVisionCore:
             y_min = center[1] - ComputerVisionCore.mm_to_px(ComputerVisionCore.ROBOT_RADIUS_MM)
             y_max = center[1] + ComputerVisionCore.mm_to_px(ComputerVisionCore.ROBOT_RADIUS_MM)
 
-            # Add some margin (e.g., 10 pixels)
+            
             robot_bbox = box(x_min, y_min, x_max, y_max)
 
         frame_copy = frame.copy()
@@ -238,7 +238,7 @@ class ComputerVisionCore:
             y_min = center[1] - ComputerVisionCore.mm_to_px(ComputerVisionCore.GOAL_RADIUS_MM)
             y_max = center[1] + ComputerVisionCore.mm_to_px(ComputerVisionCore.GOAL_RADIUS_MM)
 
-            # Add some margin (e.g., 10 pixels)
+            
             goal_bbox = box(x_min, y_min, x_max, y_max)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -300,4 +300,4 @@ class ComputerVisionCore:
         """Compute millimeter-per-pixel scale using two known markers."""
         pixel_dist = np.linalg.norm(np.array(point_px_1, float) - np.array(point_px_2, float))
         return real_dist_mm / pixel_dist
-# =========================================================
+# ===========================================
