@@ -302,7 +302,7 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             if self.ui_callback:
                 self.ui_callback({
-                    "pose": pose_mm,
+                    "pose": ComputerVisionCore.mm_to_px(pose_mm),
                     "pose_cov": P,
                     "kidnapped": self.kidnapped,
                     "path": self.current_path,
