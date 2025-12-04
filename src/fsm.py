@@ -18,7 +18,8 @@ from local_navigation.avoidancetest_andy import *
 DISTANCE_TO_GOAL_TOL_MM = 100  # in mm
 DISTANCE_TO_GOAL_TOL_M = DISTANCE_TO_GOAL_TOL_MM / 1000.0  # in meters
 DENSIFY_STEP_DIST_M = 0.02  # in meters
-OFF_TRACK_THRESHOLD_MM = 150  # in mm
+GROUND_DETECTION_THRESHOLD = 200  # proximity sensor threshold for ground detection
+MAX_COV_THRESHOLD = 5000000.0  # max allowed trace of covariance matrix
 
 # ------------------------------------------------------------
 # Helper for path deviation measurement
@@ -89,10 +90,6 @@ class Fsm(threading.Thread):
                     )
         )
 
-        # thresholds
-        self.max_no_vision_time = 0.8  # seconds before declaring "kidnapped"
-        self.last_vision_time = time.time()
-
         # Upstream interfaces callback
         self.ui_callback = ui_callback
 
@@ -131,7 +128,8 @@ class Fsm(threading.Thread):
         self.client = ClientAsync()
         self.node = aw(self.client.wait_for_node())
         aw(self.node.lock())
-        aw(self.node.wait_for_variables({"prox.horizontal", "motor.left.speed", "motor.right.speed"}))
+        aw(self.node.wait_for_variables({"prox.ground.delta", "prox.horizontal", 
+                                         "motor.left.speed", "motor.right.speed"}))
 
         while self.__running.is_set():
             if not self.__resume.is_set():
@@ -173,7 +171,8 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             # 2) Robotics sensors
             # --------------------------------------------------------
-            sensor_vals = list(self.node.v.prox.horizontal)
+            prox_horizon_vals = list(self.node.v.prox.horizontal)
+            prox_ground_vals = list(self.node.v.prox.ground.delta)
             u_motor = np.array([
                 self.node.v.motor.left.speed,
                 self.node.v.motor.right.speed
@@ -185,7 +184,6 @@ class Fsm(threading.Thread):
             pose_pred, P_pred = self.ekf.predict(u_motor)
 
             if robot_det["found"]:
-                self.last_vision_time = time.time()
                 z = np.array([robot_pose_mm[0],
                               robot_pose_mm[1],
                               robot_pose_mm[2]])
@@ -194,37 +192,26 @@ class Fsm(threading.Thread):
             else:
                 # No new measurement
                 pose_mm, P = pose_pred, P_pred
+                # Optional: check covariance
+                if np.trace(P) > MAX_COV_THRESHOLD:
+                    print("[FSM] High uncertainty → consider stopping.")
+                    self.set_motors(left_target=0, right_target=0)
 
             # --------------------------------------------------------
-            # 4) Kidnapped robot detection
+            # 4) Replan if kidnapped or no path
             # --------------------------------------------------------
-            no_vision_elapsed = time.time() - self.last_vision_time
+            need_replan = self.current_path is None
 
-            if no_vision_elapsed > self.max_no_vision_time:
+            if prox_ground_vals[0] < GROUND_DETECTION_THRESHOLD and prox_ground_vals[1] < GROUND_DETECTION_THRESHOLD:
                 if not self.kidnapped:
-                    print("[FSM] Robot kidnapped! Using EKF only.")
+                    print("[FSM] Robot kidnapped! Motors stopped.")
+                    self.set_motors(left_target=0, right_target=0)
                 self.kidnapped = True
             else:
                 if self.kidnapped:
-                    print("[FSM] Vision restored! Checking if replanning is needed.")
-                self.kidnapped = False
-
-            # --------------------------------------------------------
-            # 5) Decide if global path must be recomputed
-            # --------------------------------------------------------
-            need_replan = False
-
-            if self.current_path is None:
-                need_replan = True
-
-            elif not self.kidnapped:
-                # If robot deviates far from path after reappearing
-                d = distance_to_path(
-                        pose_mm, 
-                        ComputerVisionCore.px_to_mm(self.current_path)
-                    )
-                if d > OFF_TRACK_THRESHOLD_MM:  # mm threshold
-                    print("[FSM] Robot off-path, replanning.")
+                    print("[FSM] Robot placed back on ground.")
+                    self.kidnapped = False
+                    # recompute goal / path
                     need_replan = True
 
             if need_replan:
@@ -257,7 +244,7 @@ class Fsm(threading.Thread):
                                     pose_mm[2]
                                 ])  # in meters
                 goal_pose_m = np.array(goal_pose_mm / 1000.0)  # in meters
-                dist_to_goal = np.linalg.norm(robot_pose_m[:1] - goal_pose_m)
+                dist_to_goal = np.linalg.norm(robot_pose_m[:2] - goal_pose_m[:2])
 
                 if dist_to_goal < DISTANCE_TO_GOAL_TOL_M:
                     print("Goal reached within tolerance – stopping.")
@@ -271,9 +258,9 @@ class Fsm(threading.Thread):
             # --- update local occupancy grid from sensors ---
             # This uses Thymio's prox readings, converts them to obstacle positions
             # in the robot frame, and inflates obstacles by robot radius
-            grid.update_from_sensor_vals(sensor_vals)
+            grid.update_from_sensor_vals(prox_horizon_vals)
 
-            if self.current_path:
+            if self.current_path and not self.kidnapped:
                 # --- compute virtual goal from local navigator ---
                 # Uses:
                 #   - current pose (m)
@@ -286,7 +273,7 @@ class Fsm(threading.Thread):
                         ComputerVisionCore.px_to_mm(self.current_path) / 1000.0,
                         step=DENSIFY_STEP_DIST_M
                     ),
-                    sensor_vals=sensor_vals
+                    sensor_vals=prox_horizon_vals
                 )
 
                 if virt_goal_wf is None:
@@ -301,7 +288,7 @@ class Fsm(threading.Thread):
                 uL, uR, _ = g2g.compute_motor_commands(
                     robot_pose_m,
                     virt_goal_wf,
-                    sensor_vals=sensor_vals,
+                    sensor_vals=prox_horizon_vals,
                     dt=self.dt
                 )
 
@@ -309,11 +296,6 @@ class Fsm(threading.Thread):
                 # 9) Apply to robot
                 # --------------------------------------------------------
                 self.set_motors(left_target=uL, right_target=uR)
-            
-            else:
-                # No path → stop
-                print("[FSM] No path available → stopping motors.")
-                break
 
             # --------------------------------------------------------
             # 10) Upstream interface callback
