@@ -200,7 +200,7 @@ class Fsm(threading.Thread):
             if need_replan:
                 if goal_det["found"]:
                     print("[FSM] Computing global path...")
-                    self.current_path, _ = GlobalNavigator.plan_path(
+                    result = GlobalNavigator.plan_path(
                         obstacles=obstacles,
                         start=pose[:2],
                         goal=goal_det["center"],
@@ -209,6 +209,11 @@ class Fsm(threading.Thread):
                         img_height=frame.shape[0],
                         debug_img=None
                     )
+
+                    if result is not None:
+                        self.current_path, _ = result
+                    else:
+                        print("[FSM] Path planning failed. Keeping current path.")
                 else:
                     print("[FSM] Cannot plan: goal not visible.")
 
@@ -247,8 +252,8 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             if self.ui_callback:
                 self.ui_callback({
-                    "pose": pose.tolist(),
-                    "pose_cov": P.tolist(),
+                    "pose": pose,
+                    "pose_cov": P,
                     "kidnapped": self.kidnapped,
                     "path": self.current_path,
                     "goal": goal_det["center"] if goal_det["found"] else None,
