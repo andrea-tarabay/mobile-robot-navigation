@@ -151,6 +151,7 @@ class Fsm(threading.Thread):
             det = packet["detections"]
 
             robot_det = det["robot"]
+            robot_pose_mm = None
             if robot_det["found"]:
                 # Convert pixel → mm only if robot is visible
                 robot_pose_mm = np.array([
@@ -160,6 +161,7 @@ class Fsm(threading.Thread):
                                 ])
             
             goal_det = det["goal"]
+            goal_pose_mm = None
             if goal_det["found"]:
                 goal_pose_mm = np.array([
                                     ComputerVisionCore.px_to_mm(goal_det["center"][0]), 
@@ -248,19 +250,20 @@ class Fsm(threading.Thread):
             # --------------------------------------------------------
             # 6) Check for goal reached
             # --------------------------------------------------------
-            robot_pose_m = np.array([
-                                pose_mm[0] / 1000.0, 
-                                pose_mm[1] / 1000.0, 
-                                pose_mm[2]
-                            ])  # in meters
-            goal_pose_m = np.array(goal_pose_mm / 1000.0)  # in meters
-            dist_to_goal = np.linalg.norm(robot_pose_m[:1] - goal_pose_m)
+            if self.current_path is not None and goal_det["found"]:
+                robot_pose_m = np.array([
+                                    pose_mm[0] / 1000.0, 
+                                    pose_mm[1] / 1000.0, 
+                                    pose_mm[2]
+                                ])  # in meters
+                goal_pose_m = np.array(goal_pose_mm / 1000.0)  # in meters
+                dist_to_goal = np.linalg.norm(robot_pose_m[:1] - goal_pose_m)
 
-            if dist_to_goal < DISTANCE_TO_GOAL_TOL_M:
-                print("Goal reached within tolerance – stopping.")
-                self.current_path = None
-                self.set_motors(left_target=0, right_target=0)
-                break
+                if dist_to_goal < DISTANCE_TO_GOAL_TOL_M:
+                    print("Goal reached within tolerance – stopping.")
+                    self.current_path = None
+                    self.set_motors(left_target=0, right_target=0)
+                    break
 
             # --------------------------------------------------------
             # 7) Local avoidance → virtual goal
