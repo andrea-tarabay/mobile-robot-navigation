@@ -15,6 +15,8 @@ from local_navigation.avoidancetest_andy import *
 # -----------------------------------------------------------
 # Constants
 # -----------------------------------------------------------
+Q = np.diag([7.0, 100, 0.0036])  # motion noise covariance
+R = np.diag([1.75, 25.1, 0.0009])  # measurement noise covariance
 DISTANCE_TO_GOAL_TOL_MM = 100  # in mm
 DISTANCE_TO_GOAL_TOL_M = DISTANCE_TO_GOAL_TOL_MM / 1000.0  # in meters
 DENSIFY_STEP_DIST_M = 0.02  # in meters
@@ -85,8 +87,8 @@ class Fsm(threading.Thread):
             system = DifferentialDriveSystem(dt=self.dt, 
                         lambda_=0.39735099337748336, 
                         axle_length=93.5, 
-                        motion_noise_cov=np.eye(3)*0.03, 
-                        measurement_noise_cov=np.eye(3)*0.01
+                        motion_noise_cov=Q,
+                        measurement_noise_cov=R
                     )
         )
 

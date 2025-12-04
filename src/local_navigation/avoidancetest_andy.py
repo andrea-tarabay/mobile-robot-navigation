@@ -481,6 +481,7 @@ class GoToGoalController:
         self.int_alpha = 0.0
         self.int_rho = 0.0
         self.prev_time = None
+        self.pose_history = []  # for debugging / analysis
 
     # def compute_unicycle_cmd(self, pose, goal_xy):
     #     x, y, theta = pose
@@ -618,6 +619,8 @@ class GoToGoalController:
         """
         v, w, rho, alpha = self.compute_unicycle_cmd(pose, goal_xy, dt=dt)
         stopped = False
+
+        #self.pose_history.append(tuple(pose))  # or pose[:2] if you only want (x, y)
 
         if stop_if_close and rho < tol:
             v = 0.0
