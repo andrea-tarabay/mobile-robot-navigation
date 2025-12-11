@@ -323,7 +323,6 @@ class LocalNavigator:
         norm_att = np.linalg.norm(F_att)
         if norm_att > 1e-6:
             F_att = (self.cfg.k_att / norm_att) * F_att
-        print("print attractive force",F_att)
         F_rep = self._repulsive_vector()
 
         # If no significant obstacles, ignore repulsion but STILL use a virtual goal
@@ -492,23 +491,18 @@ class GoToGoalController:
         dy = yg - y
 
         rho = math.hypot(dx, dy)
-        print("x:", x,"xg:",xg, "y:", y,"yg:", yg, "dx", dx, "dy", dy, "rho", rho)
 
         # angle of the goal in robot frame
         y_forward = math.cos(theta) * dx + math.sin(theta) * dy
         x_left = math.sin(theta) * dx - math.cos(theta) * dy
-        print("x:", x_left, "y:", y_forward)
 
         alpha = math.atan2(x_left, y_forward)
-        print("alpha", alpha)
         alpha = wrap_to_pi(alpha)
-        print("wraped alpha", alpha)
 
         # deadzone on angle
         alpha_dead = 5.0 * math.pi / 180.0
         if abs(alpha) < alpha_dead:
             alpha = 0.0
-        print("dead_alpha", alpha)
 
         # ---------------------------
         #   PID ON ANGLE (alpha)
@@ -555,14 +549,9 @@ class GoToGoalController:
         # 5) Linear velocity (still simple P on rho)
         v = self.g.Kv * rho + Kiv * self.int_rho
 
-        print(f"PID terms: P={Kp*alpha:.3f}, I={Ki*self.int_alpha:.3f}, "
-              f"D={Kd*alpha_dot:.3f}, w_raw={w:.3f}")
-        print("v,w before clamp:", v, "  ", w)
-
         # Clamp
         v = max(-self.g.v_max, min(self.g.v_max, v))
         w = max(-self.g.w_max, min(self.g.w_max, w))
-        print("v,w after clamp:", v, "  ", w)
 
         return v, w, rho, alpha
 

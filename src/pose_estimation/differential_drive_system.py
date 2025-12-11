@@ -89,7 +89,7 @@ class DifferentialDriveSystem(NonlinearSystem):
 
         px_new = px + self.dt * self.lambda_ * (ur + ul) / 2 * np.cos(theta)
         py_new = py + self.dt * self.lambda_ * (ur + ul) / 2 * np.sin(theta)
-        theta_new = theta - self.dt * self.lambda_ * (ur - ul) / self.axle_length
+        theta_new = theta + self.dt * self.lambda_ * (ur - ul) / self.axle_length
 
         return np.array([px_new, py_new, theta_new])
 
