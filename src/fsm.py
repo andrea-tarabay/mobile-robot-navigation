@@ -85,7 +85,7 @@ class Fsm(threading.Thread):
             mu0 = np.array([0.0, 0.0, 0.0]),
             Sigma0 = np.eye(3) * 1.0,
             system = DifferentialDriveSystem(dt=self.dt, 
-                        lambda_=0.73, 
+                        lambda_=0.77, 
                         axle_length=93.5, 
                         motion_noise_cov=Q,
                         measurement_noise_cov=R

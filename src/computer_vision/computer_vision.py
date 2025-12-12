@@ -75,7 +75,7 @@ class ComputerVisionCore:
     Stateless CV core: processes a frame given parameters.
     """
     # ---- Constants ----
-    MM_PER_PIXEL = 0.86
+    MM_PER_PIXEL = 0.85
 
     MARKER_RADIUS_MM = 20
     ROBOT_RADIUS_MM = 72
